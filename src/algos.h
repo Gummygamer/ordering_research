@@ -15,7 +15,7 @@
 namespace lab {
 
 extern uint64_t g_comps;       // incremented by Counting comparator
-extern uint64_t g_merge_cost;  // elements moved by run-merging sorts (post-trim)
+extern uint64_t g_merge_cost;  // summed merged spans after trimming
 extern size_t g_small_merge;   // hybrid: below this min-run-length, use plain merge
 extern size_t g_fj_run_thresh; // adaptive hybrid: natural prefix >= this -> binary-extend
 extern size_t g_fj_largest_block; // largest FJ block used by the measured call
@@ -90,9 +90,10 @@ inline size_t compute_minrun(size_t n) {  // CPython: result in [32, 64]
     return n + r;
 }
 
-// Current CPython (3.14+) emits a sequence of floor/ceil run targets rather
-// than one fixed minrun. On all-short inputs this creates exactly 2^e nearly
-// equal runs, avoiding the alphabetic-tree rounding loss of a fixed target.
+// Current CPython development source emits a sequence of floor/ceil run targets
+// rather than one fixed minrun. On all-short inputs this creates exactly 2^e
+// nearly equal runs, avoiding the alphabetic-tree rounding loss of a fixed
+// target.
 struct MinRunGenerator {
     size_t n, e = 0, mask = 0, current = 0;
 
@@ -527,7 +528,7 @@ void powersort(T* a, size_t n, C cmp) {
                         });
 }
 
-// Fixed-minrun ablation matching the pre-3.14 powersort implementation.
+// Fixed-minrun ablation matching the older CPython powersort run targeting.
 template <class T, class C>
 void powersort_fixed(T* a, size_t n, C cmp) {
     powersort_impl(a, n, cmp, compute_minrun(n),

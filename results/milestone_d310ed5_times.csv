@@ -1,0 +1,16 @@
+algo,dist,n,seed,mode,rep,time_ns,comparisons,heap_aux_bytes,fj_stack_bound_bytes,merge_span_elems,ok,small_merge,fj_run_thresh,fj_max,build_id
+powersort,random,1000000,1,time,0,72149089,0,0,0,0,1,96,0,2048,d310ed5
+powersort,random,1000000,1,time,1,72674796,0,0,0,0,1,96,0,2048,d310ed5
+powersort,random,1000000,1,time,2,75995813,0,0,0,0,1,96,0,2048,d310ed5
+powersort,random,1000000,1,time,3,71899580,0,0,0,0,1,96,0,2048,d310ed5
+powersort,random,1000000,1,time,4,71264920,0,0,0,0,1,96,0,2048,d310ed5
+powersort_fj,random,1000000,1,time,0,80499382,0,0,6204,0,1,96,0,2048,d310ed5
+powersort_fj,random,1000000,1,time,1,80009535,0,0,6204,0,1,96,0,2048,d310ed5
+powersort_fj,random,1000000,1,time,2,80411910,0,0,6204,0,1,96,0,2048,d310ed5
+powersort_fj,random,1000000,1,time,3,80502886,0,0,6204,0,1,96,0,2048,d310ed5
+powersort_fj,random,1000000,1,time,4,80899286,0,0,6204,0,1,96,0,2048,d310ed5
+hybrid_fjauto2048,random,1000000,1,time,0,142198243,0,0,273272,0,1,96,0,2048,d310ed5
+hybrid_fjauto2048,random,1000000,1,time,1,141481967,0,0,273272,0,1,96,0,2048,d310ed5
+hybrid_fjauto2048,random,1000000,1,time,2,141431207,0,0,273272,0,1,96,0,2048,d310ed5
+hybrid_fjauto2048,random,1000000,1,time,3,141084492,0,0,273272,0,1,96,0,2048,d310ed5
+hybrid_fjauto2048,random,1000000,1,time,4,140966813,0,0,273272,0,1,96,0,2048,d310ed5

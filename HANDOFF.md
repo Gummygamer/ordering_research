@@ -1,117 +1,134 @@
-# HANDOFF — ordering-algorithms research session (2026-07-19)
+# HANDOFF — ordering-algorithms research
 
-Continuation state for the task: *"Research recent results in the theory of
-ordering algorithms and experiment until a breakthrough; track memory usage,
-speed and number of comparisons of each algorithm."*
+Updated 2026-07-19 after validating the conservative adaptive-FJ milestone.
+The filesystem and Git history remain authoritative; check both before acting.
 
-## Where things stand (tasks)
+## Current state
 
-1. ✅ Instrumented C++ sorting lab built (`src/algos.h`, `src/main.cpp`).
-2. ✅ Correctness validated: `./build/sortlab selftest` — 18 algorithms, all ok,
-   including exact stability equivalence vs `std::stable_sort`; Ford–Johnson
-   (`fjcounts`) matches the known worst-case table F(n) exactly for n ≤ 22
-   (optimal 62/66 at n = 20/21).
-3. ⏳ Full benchmark grid NOT yet run. `scripts/run_bench.py` and
-   `scripts/aggregate.py` NOT yet written (plan below).
-4. ⏳ IN PROGRESS — hybrid comparison-optimality experiments (key insight below).
-5. ⏳ Predictions-law experiment not yet run (use `dispX` distributions).
-6. ⏳ Final report (README.md) not yet written; `notes/research_notes.md` has the
-   literature summary with sources.
+The algorithm source used for the committed benchmark is `d310ed5`. The raw
+data records that exact build ID. `powersort` matches the audited current
+CPython development design's varying floor/ceiling minrun targets and
+size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
+ablation.
 
-## Build & CLI
+The registry has 34 entries: 33 comparison algorithms and one LSD radix speed
+reference. Ford--Johnson supports caps through 2048 with cap-sized scratch
+arrays and an extended Jacobsthal schedule. The benchmark schema is:
 
+```text
+algo,dist,n,seed,mode,rep,time_ns,comparisons,heap_aux_bytes,
+fj_stack_bound_bytes,merge_span_elems,ok,small_merge,fj_run_thresh,
+fj_max,build_id
 ```
-g++ -O3 -march=native -std=c++20 -o build/sortlab src/main.cpp
-./build/sortlab selftest | fjcounts | list
-./build/sortlab bench <algo> <dist> <n> <seed> <reps> <time|count> [small_merge]
+
+Never use count-mode `time_ns` for speed. Timing trials are serial and are
+summarized by their median.
+
+## Validated milestone data
+
+- `results/milestone_d310ed5_counts.csv`: 648 rows = 8 algorithms ×
+  9 distributions × 3 sizes × 3 seeds.
+- `results/milestone_d310ed5_times.csv`: 15 rows = 3 algorithms × 5 serial
+  repetitions.
+- `results/milestone_d310ed5_tables.md`: strict aggregation of both files.
+- Every row has `ok=1` and `build_id=d310ed5`.
+
+The count distributions are `random`, `dup16`, `runs32`, `runs1024`,
+`nearly1`, `tail10`, `saw13`, `organpipe`, and `disp256`; sizes are 10k, 100k,
+and 1m; seeds are 1--3.
+
+### Robust result: `powersort_fj`
+
+Against exact Powersort, PFJ had 0 regressions, 60 ties, and 21 improvements
+across all 81 matched distribution/size/seed cases. All 54 cases at 10k and
+100k tie intentionally because their generated minruns are below 60. At random
+1m, mean comparisons/element are:
+
+| algorithm | comparisons/n | seed range |
+|---|---:|---:|
+| `powersort` | 18.599039 | 18.598521--18.599329 |
+| `powersort_fj` | 18.590897 | 18.590682--18.591090 |
+
+PFJ saves 0.008142 comparisons/element there. It has the same heap peak and
+merge span as Powersort; its maximum conservative FJ stack bound is 6,204 B.
+The algorithm is unstable and 11.6% slower in the recorded timing sample.
+
+### Non-robust frontier: `hybrid_fjauto2048`
+
+At random 1m, auto caps 128/256/512/1024/2048 average
+18.561112/18.541901/18.530442/18.524270/18.520968 comparisons per element.
+The finite-size bound is 18.488885, so auto2048 is 0.032083 above it and reduces
+Powersort's excess by 70.9%.
+
+Do not generalize that frontier. Among 72 non-random cases, auto2048 has
+54 regressions, 9 ties, and 9 improvements. Its mean penalty at 1m reaches
++1.835 comparisons/element on `dup16`, +5.790 on `runs1024`, and +6.597 on
+`nearly1`. Its stack bound is 273,272 B and its median random-1m time is
+141.431 ns/element versus 72.149 for Powersort.
+
+## Benchmark tooling
+
+`scripts/run_bench.py` supports `quick`, `milestone`, and `full` profiles,
+parallel count mode, strictly serial timing, exact build-ID injection, strict
+schema/identity/`ok` checks, and non-overwriting output. The milestone profile
+runs the full count grid plus five random-1m timing repetitions for Powersort,
+PFJ, and auto2048.
+
+`scripts/aggregate.py` rejects legacy schemas, duplicate samples, mixed
+configurations/builds, and malformed mode rows. It reports mean comparison
+counts with seed ranges, median timings, maximum memory figures, merge span,
+and the random-permutation `lg(n!)` reference.
+
+The seven earlier CSV files are explicitly legacy in `results/README.md`.
+
+Acceptance checks passed before the milestone commit: release selftest for all
+34 registry entries, strict warnings-as-errors compilation, ASan/UBSan selftest
+with leak detection disabled, Python byte-compilation, strict aggregation of
+all 663 current-schema rows, and `git diff --check`.
+
+## Immediate next experiment
+
+Reuse the first pair ordering already established by `count_run` instead of
+comparing that pair again at the root of each selected FJ base case. A safe
+implementation should:
+
+1. Add a root-only `known_first_pair` path to the capped FJ core.
+2. Skip only the first pair comparison; recursive winner sorts use the normal
+   path, and standalone `fjcounts` remains unchanged.
+3. Avoid comparator-based assertions, which would contaminate count mode.
+4. Prove empirically that output and all later comparison decisions match the
+   old path and that savings equal exactly one comparison per selected block.
+5. Re-run selftests, sanitizer/warnings checks, and focused count grids before
+   accepting the change.
+
+This should improve PFJ by roughly one comparison per selected block without
+changing its merge tree, heap use, FJ stack bound, or asymptotic behavior.
+
+Later directions: a statistical portfolio gate between PFJ and auto2048 (never
+claim adversarial robustness), replacing FJ's quadratic chain/winner-position
+bookkeeping, and the `disp4`--`disp4096` prediction-law experiment. The latter
+is inspired by Bai--Coester, but these algorithms do not consume predictions
+and therefore do not validate their theorem directly.
+
+## Validation commands
+
+```sh
+g++ -O3 -march=native -std=c++20 \
+  -DSORTLAB_BUILD_ID='"local"' -o build/sortlab src/main.cpp
+./build/sortlab selftest
+
+g++ -O3 -march=native -std=c++20 -Wall -Wextra -Wpedantic \
+  -Wconversion -Wshadow -Werror -fsyntax-only src/main.cpp
+
+g++ -O1 -g -std=c++20 -fno-omit-frame-pointer \
+  -fsanitize=address,undefined \
+  -DSORTLAB_BUILD_ID='"sanitize"' -o build/sortlab_san src/main.cpp
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+  ./build/sortlab_san selftest
+
+python3 -m py_compile scripts/run_bench.py scripts/aggregate.py
+python3 scripts/aggregate.py results/milestone_d310ed5_counts.csv \
+  results/milestone_d310ed5_times.csv
+git diff --check
 ```
-CSV row: `algo,dist,n,seed,mode,rep,time_ns,comps,aux_bytes,merge_cost,ok`
-(count mode: 1 row with comps/aux/merge_cost; time mode: `reps` rows, comps=0).
-`ok` must always be 1. Selftest exit code: run it bare, not through a pipe.
-
-Algorithms: `std_sort std_stable heapsort quick_mo3 dual_pivot bl_quick
-merge_td timsort powersort hybrid_fj{8,12,16,21,32,42} hybrid_bin{21,32}
-radix_lsd`. timsort/powersort are CPython-faithful ports (galloping merges,
-trims, minrun∈[32,64]); hybrid_fj = powersort policy + Ford–Johnson base
-blocks (unstable, FJ_MAX=64); hybrid_bin = same but binary-insertion base
-(stable ablation); `small_merge` CLI arg (default 96) = min-run-side below
-which a plain branchless merge (no trims/gallop) is used by hybrids only.
-
-Dists: `random dup2 dup16 dup256 equal sorted reversed runs32 runs1024
-nearly1 tail10 saw13 organpipe dispX` (X = σ of Gaussian rank displacement,
-e.g. disp16, disp256 — these model positional predictions with error σ).
-
-Instrumentation: comparisons via `Counting<>` wrapper; aux memory via global
-new/delete overrides (incl. nothrow variants — libstdc++ stable_sort uses
-them; peak-minus-baseline around the sort call); merge_cost = Σ post-trim
-merged lengths.
-
-## Validated reference numbers (random, n=1e6, seed 1, comps/element)
-
-Lower bound lg(n!)/n = 18.489. Measured (count mode):
-
-| algo | comps/n | aux bytes | note |
-|---|---|---|---|
-| powersort | 18.604 | ~4.0 MB | best so far; ties timsort 18.605 |
-| hybrid_bin32 (sm96) | 18.642 | ~4.0 MB | stable |
-| hybrid_fj32 (sm96) | 18.671 | ~4.0 MB | |
-| merge_td | 18.693 | 4.0 MB | |
-| hybrid_fj21 (sm96) | 18.768 | ~4.0 MB | |
-| std_stable | 19.823 | 4.0 MB | |
-| bl_quick | 22.490 | 0 | = ninther theory constant |
-| std_sort | 23.680 | 0 | = 1.188·n lg n mo3 theory ✓ |
-
-(These constants matching theory validate the whole instrumentation.)
-
-## KEY INSIGHTS SO FAR (do not re-derive)
-
-1. `small_merge` threshold sweep (0→384) on random 1M changed comps only
-   18.7768→18.7662 (~0.01/elem) — trim-gallop overhead was NOT the main cost.
-   Keep sm=96 (aux/time fine). The ensure_tmp free-before-grow fix brought aux
-   from ~9 MB to the honest ~4 MB (n/2 × 8B).
-2. hybrid_bin21 (18.728) BEATS hybrid_fj21 (18.768) at the same block size:
-   FJ's per-block optimality is being eaten because `count_run` burns ~2.5
-   comps/block discovering a natural run that FJ then discards and re-sorts,
-   while binary-insert-extend reuses the sorted prefix. Small blocks also mean
-   more runs → more per-merge constant overhead.
-3. Consequence: plain CPython powersort (minrun≈62, binary insertion) is still
-   the comps leader at 18.604. The FJ win must come at LARGE blocks where the
-   count_run waste (~2.5/B per elem) amortizes: **next experiment = hybrid_fj
-   with block 62–64** (FJ_MAX is already 64; add `hybrid_fj62` to the enum/
-   registry/dispatch in main.cpp — trivial: copy the hybrid_fj42 lines).
-   Expected ≈ 18.50–18.55 if FJ(62) beats binary-insertion(62) by ~0.1/elem.
-   Also consider salvaging the natural prefix: if count_run found r ≥ some
-   threshold, binary-extend instead of FJ (avoids waste on semi-structured
-   data). Measure FJ avg comps at n=62 first (extend fjcounts loop to 64) to
-   predict the gain before wiring it in.
-
-## Remaining plan
-
-- Task 4 (active): block-62 experiment above; then re-sweep; the "breakthrough"
-  claim target: a run-adaptive sort measurably below powersort's comps on
-  random (toward 18.49 bound) with no regression on structured dists
-  (runs32/1024, nearly1, dup16, sorted, reversed, organpipe, saw13, tail10 —
-  spot-check those for hybrids vs powersort).
-- Task 3: `scripts/run_bench.py`: count-phase parallel (~12 workers,
-  ProcessPool/subprocess), time-phase SERIAL (noise); grid = all algos ×
-  ~14 dists × n∈{1e4,1e5,1e6} (+ n=1e7 subset: random/runs1024/dup256/disp256,
-  reps 3); seeds 1..3 for count, seed 1 reps 5 for time; write
-  results/raw_*.csv. `scripts/aggregate.py`: stdlib only (NO pandas installed),
-  medians, comps/n, (comps−lg n!)/lg n! %, aux/n, ns/elem → results/tables.md.
-- Task 5: predictions law — count mode, powersort/timsort/hybrid/merge_td on
-  disp4 disp16 disp64 disp256 disp1024 disp4096 at n=1e6: fit comps/n vs lg σ
-  (expect slope ≈ 1, i.e. Bai–Coester O(Σ log η) / arXiv:2311.00749);
-  find σ* crossover vs full-sort comps; also report time (displacement inputs
-  are where galloping+powersort shine).
-- Task 6: README.md final report — tables for ALL THREE METRICS per algorithm
-  (time ns/elem, comps/n, aux bytes), findings, honest framing: components are
-  known prior art (Munro–Wild powersort; Ford–Johnson 1959; Tim Peters
-  galloping; QuickXsort already achieved n lg n − 1.3999n avg); our
-  contribution is the measured combination + 3-metric instrumented comparison.
-  Cite sources in notes/research_notes.md. Optionally a claude.ai Artifact with
-  charts (load artifact-design + dataviz skills first if so).
-
-## Environment
-
-g++ 15.2 (Ubuntu), Python 3.14 (no pandas — stdlib only), 16 cores, 23 GB RAM.
-Machine noise: run timing serially, median of reps. Not a git repo.

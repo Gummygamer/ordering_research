@@ -1,69 +1,114 @@
-# Research notes — recent theory on ordering (comparison sorting) algorithms
+# Research notes — comparison sorting and adaptive merging
 
-Date: 2026-07-19
+Updated 2026-07-19. These notes separate published guarantees from this
+project's generated-input measurements.
 
-## 1. Run-adaptive merging: Powersort (the current theory→practice success)
+## 1. Powersort and current CPython engineering
 
-- Munro & Wild, ESA 2018, "Nearly-Optimal Mergesorts": *peeksort* and *powersort*
-  compute a merge tree that is within a constant number of comparisons of the
-  optimal alphabetic binary search tree over existing runs. Merge cost is
-  n·(H(run-length distribution)) + O(n), i.e. optimally adaptive to runs.
-  https://arxiv.org/abs/1805.04154
-- Powersort replaced Timsort's (provably suboptimal) merge rules in CPython 3.11+
-  and PyPy; the run detection/galloping machinery was kept.
-  https://en.wikipedia.org/wiki/Powersort
-- Cawley Gelling, Nebel, Smith, Wild 2022/23: *Multiway Powersort* — same idea for
-  k-way merges (nearly-optimal k-ary search trees). https://arxiv.org/abs/2209.06909
+Munro and Wild introduced the stable natural mergesorts Peeksort and Powersort.
+For existing run lengths `L_1,...,L_r`, Powersort's merge cost is at most
+`H(L_i/n)n + 2n`, and its comparison count is at most
+`H(L_i/n)n + 3n - r`. This is leading-term optimal up to additive `O(n)`, not
+within a constant number of comparisons of the optimal alphabetic tree.
 
-## 2. Comparison-count frontier (constant-factor optimality)
+Primary source: J. Ian Munro and Sebastian Wild,
+[Nearly-Optimal Mergesorts](https://doi.org/10.4230/LIPIcs.ESA.2018.63),
+ESA 2018.
 
-- Information-theoretic bound: lg(n!) = n lg n − 1.4427·n + 0.5·lg n + O(1).
-- MergeInsertion (Ford–Johnson 1959) is still essentially the best known
-  comparison count for small n (optimal for n ≤ 11, n = 20, 21, ...).
-- QuickXsort / QuickMergesort with MergeInsertion base cases:
-  n lg n − 1.3999n + o(n) comparisons *on average*, constant extra space
-  (Edelkamp & Weiß; also "QuickXsort — A Fast Sorting Scheme in Theory and
-  Practice"). https://arxiv.org/abs/1307.3033 , https://arxiv.org/pdf/1811.01259
-- Iwama & Teruyama, "Improved Average Complexity for Comparison-Based Sorting":
-  gap to the lower bound at most 0.0321n + o(n) via (1,2)-insertion.
-  https://arxiv.org/pdf/1705.00849
-- Plain top-down mergesort: n lg n − 1.248n avg; std introsort is far above the
-  bound (partitioning wastes comparisons); binary-insertion base cases matter.
+CPython changed list sorting's merge-order policy to Powersort for Python 3.11
+while retaining natural-run detection and galloping. The audited development
+snapshot [`da5713c`](https://github.com/python/cpython/tree/da5713c489c63622c0fdd25343a7ea7293a66e68)
+also uses a fractional minrun generator: forced short runs receive floor/ceil
+targets around `n/2^e`, yielding a power-of-two number of closely balanced runs.
+Its final collapse chooses between the top two adjacent merges using outer run
+lengths. Relevant primary material:
 
-## 3. Learning-augmented sorting (2023–2025 theory wave)
+- [`Objects/listobject.c`](https://github.com/python/cpython/blob/da5713c489c63622c0fdd25343a7ea7293a66e68/Objects/listobject.c)
+- [`Objects/listsort.txt`](https://github.com/python/cpython/blob/da5713c489c63622c0fdd25343a7ea7293a66e68/Objects/listsort.txt)
+- [varying-minrun commit](https://github.com/python/cpython/commit/2fc68e180ffdb31886938203e89a75b220a58cec)
+- [design issue 135551](https://github.com/python/cpython/issues/135551)
 
-- Bai & Coester, "Sorting with Predictions" (NeurIPS 2023): with positional
-  predictions having per-item error η_i, simple algorithms achieve
-  O(Σ_i log(η_i + 2)) *clean* comparisons — degrading smoothly from O(n)
-  (perfect predictions) to O(n log n). Proven optimal for the error measure.
-  https://arxiv.org/abs/2311.00749
-- Related: LearnedSort as learning-augmented samplesort (SSDBM 2023);
-  PCF Learned Sort, O(n log log n) expected (https://arxiv.org/pdf/2405.07122);
-  learning-augmented priority queues (https://arxiv.org/pdf/2406.04793).
+The varying scheme is in the current development line, not Python 3.14's
+fixed-minrun implementation. Local `powersort` follows the audited development
+design; `powersort_fixed` is the fixed-target ablation.
 
-## 4. Engineering state of the art (what actually ships)
+## 2. Published comparison-count frontier
 
-- Rust std (2024 rewrite, Bergdoll & Peters): *driftsort* (stable; derived from
-  glidesort: Timsort-style run adaptivity + pdqsort-style pattern defeating +
-  branchless merging) and *ipnsort* (unstable). Up to 2.4× faster random-input
-  sorting, up to 17× on low-cardinality inputs.
-  https://github.com/Voultapher/sort-research-rs (driftsort/ipnsort writeups)
-- Key engineering ideas: branchless Lomuto partition ("Lomuto's comeback",
-  Orson Peters 2023), branchless merges, galloping only when it pays,
-  cardinality-adaptive 3-way partitioning.
-- CPython keeps Timsort's galloping merge kernel under powersort's policy.
+The distinct-key decision-tree lower bound is
+`lg(n!) = n lg n - 1.442695...n + 0.5 lg n + O(1)`.
+Ford--Johnson MergeInsertion is a classic small-`n` comparison-minimizing base
+sort: Lester Ford and Selmer Johnson,
+[A Tournament Problem](https://doi.org/10.2307/2308750), 1959.
 
-## 5. Where the open experimental space is (this project)
+Edelkamp and Weiß showed that QuickMergesort with growing MergeInsertion base
+cases uses at most `n lg n - 1.3999n + o(n)` comparisons on average for random
+distinct permutations. That construction is internal and uses `O(log n)`
+auxiliary words, not constant space. The expanded QuickXsort analysis by
+Edelkamp, Weiß, and Wild reports the stronger `-1.4112n` linear term.
 
-1. Powersort gives an (essentially) optimal *merge tree*; Ford–Johnson gives
-   (essentially) optimal *base cases*; galloping gives entropy-adaptive
-   *merges*. Nobody ships the three together. → Build `hybrid_fj`:
-   powersort policy + FJ merge-insertion base blocks + galloping merges.
-   Question: how close to lg(n!) can a practical, run-adaptive sort get?
-2. Reproduce the Bai–Coester law with a "place by prediction, then clean"
-   pipeline: comparisons should scale ≈ n·lg(σ) + O(n) for displacement σ.
-   The cleaner can be powersort/timsort itself (galloping merges are exactly
-   a Σ log η_i mechanism).
-3. Metrics tracked for every algorithm: wall time, exact comparison count,
-   peak auxiliary heap bytes (global operator new/delete instrumentation),
-   and total merge cost (elements moved in merges) where applicable.
+- [CSR 2014 paper](https://link.springer.com/chapter/10.1007/978-3-319-06686-8_11)
+- [Algorithmica 2020 paper](https://doi.org/10.1007/s00453-019-00634-0)
+
+Iwama and Teruyama combine `(1,2)`-Insertion with MergeInsertion to obtain an
+average bound `n lg n - 1.4106n + O(log n)`, leaving about `0.0321n` above the
+entropy lower bound. This is an average-case result, not a worst-case guarantee:
+[journal version](https://doi.org/10.1016/j.tcs.2019.06.032).
+
+These results are prior art. The local experiments measure a different design
+point: a run-adaptive merge tree, galloping merges, and adaptive FJ base cases,
+with comparison, speed, heap, FJ-stack, and merge-span instrumentation.
+
+## 3. Learning-augmented sorting
+
+Bai and Coester study explicit predicted sorted positions. For displacement
+error `eta_i = |p_hat(i)-p(i)|`, their deterministic algorithm uses
+`O(sum_i log(eta_i + 2))` comparisons and time, with matching asymptotic lower
+bounds for the examined error measures:
+[Sorting with Predictions, NeurIPS 2023](https://proceedings.neurips.cc/paper_files/paper/2023/hash/544696ef4847c903376ed6ec58f3a703-Abstract-Conference.html).
+
+The local `dispX` generator orders ranks by rank plus Gaussian noise of standard
+deviation `X`. It is useful for studying response to positional disorder, but
+Powersort and the hybrids do not consume predictions. A `dispX` experiment can
+be compared with Bai--Coester's law as motivation; it cannot reproduce or
+validate their theorem.
+
+## 4. Validated local milestone (`d310ed5`)
+
+The committed count grid has 648 validated rows: the algorithms `powersort`,
+`powersort_fixed`, `powersort_fj`, and auto caps 128--2048; nine distributions;
+`n` of 10k/100k/1m; seeds 1--3. All rows have `ok=1` and exact build ID
+`d310ed5`.
+
+`powersort_fj` uses the same generated run targets and merge tree as Powersort.
+Below block 60 it deliberately selects binary insertion, making all 10k and
+100k cases exact ties. Across all 81 PFJ/Powersort pairs there were 60 ties,
+21 PFJ improvements, and no regressions. At random 1m:
+
+- Powersort: 18.599039 mean comparisons/element.
+- PFJ: 18.590897, saving 0.008142/element.
+- PFJ has the same heap peak and merge span; its conservative FJ stack bound is
+  6,204 B.
+- Serial median time is 80.499 ns/element versus 72.149 for Powersort.
+
+On random 1m, auto caps 128/256/512/1024/2048 use
+18.561112/18.541901/18.530442/18.524270/18.520968 comparisons per element.
+The last figure is 0.032083 above the finite-size `lg(n!)/n` bound and reduces
+Powersort's excess by 70.9%. It is not robust: auto2048 regressed on 54 of 72
+non-random cases, has a 273,272 B FJ stack bound, and took a 141.431 ns/element
+median. This is a sampled random-permutation frontier, not a general winner.
+
+Raw data and full tables are under `results/`; `results/README.md` distinguishes
+the current schema from seven legacy checkpoints.
+
+## 5. Next credible experiments
+
+1. Reuse the first-pair ordering established by `count_run` in the root FJ call.
+   Skipping exactly that repeated comparison should save one comparison per
+   selected block without changing later decisions.
+2. Prototype a comparator-counted statistical gate between PFJ and auto2048.
+   Treat it as distributional and fallible, never adversarially robust.
+3. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
+   without changing comparison count.
+4. Run `disp4` through `disp4096`, fit comparisons/element against `log2(X)`,
+   and describe the result as an empirical disorder law rather than a proof of
+   learning-augmented bounds.
