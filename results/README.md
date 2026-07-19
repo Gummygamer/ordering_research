@@ -1,5 +1,24 @@
 # Results inventory
 
+## Dyadic displacement-response study (`1c32397`)
+
+- `displaw_1c32397_counts.csv`: 264 count rows covering 8 algorithms, 11
+  dyadic scales from `disp4` through `disp4096`, and 3 seeds at n=1m.
+- `displaw_1c32397_tables.md`: strict aggregation with arithmetic means, seed
+  ranges, and maximum memory figures.
+- `displaw_1c32397_analysis.md`: overlap validation, paired classifications,
+  crossover rankings, and descriptive log-scale fits.
+
+Every row has the current 16-column schema, `ok=1`, and `build_id=1c32397`.
+The 24 overlapping `disp256` identities exactly reproduce the prefix-aware
+grid in comparisons and all non-timing metrics. The study contains no timing
+rows; count-mode `time_ns` is not speed data.
+
+```sh
+python3 scripts/aggregate.py results/displaw_1c32397_counts.csv \
+  --title '1c32397 displacement-response aggregates'
+```
+
 ## Prefix-aware FJ follow-up (`de3837c`)
 
 - `prefixpair_de3837c_counts.csv`: 648-row count grid matching the `d310ed5`

@@ -118,12 +118,27 @@ finite-size excess. Auto2048 falls by exactly 512 comparisons per seed to
 improvement: new serial medians are 72.585/81.597/141.617 ns per element for
 Powersort/PFJ/auto2048.
 
-## 6. Remaining credible experiments
+## 6. Dyadic displacement-response study (`1c32397`)
+
+A count-only grid at n=1m covers the eight milestone algorithms, three seeds,
+and `disp4` through `disp4096` for 264 validated rows. PFJ beats Powersort in
+all 33 paired cases. The sampled winner for every seed is PFJ through X=64,
+auto128 at X=128, auto512 at X=256, auto1024 at X=512, and auto2048 from X=1024
+onward. Auto2048 nevertheless regresses in all 24 cases through X=512, so this
+is a distributional crossover pattern rather than a robust selection rule.
+
+Fitting comparisons/element against `log2(X)` over the full range does not
+produce a credible single law: residuals have systematic cap-dependent
+curvature much larger than seed variation. Conservative post-transition fits
+have slopes of about 0.98--1.00 comparisons/element per doubling, a bounded
+empirical observation that must not be extrapolated. X is Gaussian score-noise
+sigma, not observed displacement, and the algorithms do not consume
+predictions; the study does not validate Bai--Coester's theorem.
+
+## 7. Remaining credible experiments
 
 1. Prototype a comparator-counted statistical gate between PFJ and auto2048.
-   Treat it as distributional and fallible, never adversarially robust.
+   Use the sampled displacement crossovers as training evidence, and treat the
+   gate as distributional and fallible, never adversarially robust.
 2. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
    without changing comparison count.
-3. Run `disp4` through `disp4096`, fit comparisons/element against `log2(X)`,
-   and describe the result as an empirical disorder law rather than a proof of
-   learning-augmented bounds.

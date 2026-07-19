@@ -262,6 +262,30 @@ improvements across 81 cases; auto2048's non-random classification remains
 comparisons are too sparse to claim a speed improvement. Full details are in
 `results/prefixpair_de3837c_analysis.md`.
 
+### 5. Dyadic displacement-scale response
+
+A count-only follow-up at `n=1,000,000` covers all eight milestone algorithms,
+three seeds, and `disp4` through `disp4096`: 264 validated rows from build
+`1c32397`. All 24 algorithm/seed series increased strictly at every sampled
+doubling. PFJ beat Powersort in all 33 paired cases, by mean margins of
+0.012600--0.028060 comparisons per element.
+
+The auto caps show a distributional crossover ladder. The mean winner, also the
+winner for every individual seed, is PFJ through X=64, auto128 at X=128,
+auto512 at X=256, auto1024 at X=512, and auto2048 from X=1024 onward. Auto2048
+regresses in all 24 cases through X=512 and improves in all 9 cases from X=1024.
+This signal may inform a sampled portfolio gate, but it is not adversarially
+robust.
+
+A single linear fit of comparisons per element against `log2(X)` is rejected as
+a response law: residuals have cap-dependent curvature far larger than seed
+spread. Conservative post-transition fits are locally close to one additional
+comparison per element per doubling, but they must not be extrapolated. Here X
+is the generator's Gaussian score-noise parameter, not observed displacement;
+the algorithms consume no predictions and do not validate a
+learning-augmented guarantee. Full data and fit diagnostics are in
+`results/displaw_1c32397_analysis.md`.
+
 ## Interpretation and caveats
 
 - This is sampled evidence on generated inputs, not a proof of an average-case

@@ -1,17 +1,19 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-07-19 after validating the conservative adaptive-FJ milestone and
-the prefix-aware FJ follow-up. The filesystem and Git history remain
-authoritative; check both before acting.
+Updated 2026-07-19 after validating the conservative adaptive-FJ milestone,
+the prefix-aware FJ follow-up, and the dyadic displacement-response study. The
+filesystem and Git history remain authoritative; check both before acting.
 
 ## Current state
 
-The conservative crossover baseline is `d310ed5`; the current algorithm source
-is `de3837c`, which reuses the first pair ordered by `count_run` in selected FJ
-base blocks. Raw files record those exact build IDs. `powersort` matches the
-audited current CPython development design's varying floor/ceiling minrun
-targets and size-aware final collapse; `powersort_fixed` retains the older
-fixed-minrun ablation.
+The conservative crossover baseline is `d310ed5`; the algorithm source last
+changed at `de3837c`, which reuses the first pair ordered by `count_run` in
+selected FJ base blocks. The baseline and prefix-aware raw files record those
+build IDs; the displacement grid records build `1c32397`, whose algorithm
+source is unchanged from `de3837c`. `powersort` matches the audited current
+CPython development design's varying floor/ceiling minrun targets and
+size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
+ablation.
 
 The registry has 34 entries: 33 comparison algorithms and one LSD radix speed
 reference. Ford--Johnson supports caps through 2048 with cap-sized scratch
@@ -38,10 +40,14 @@ summarized by their median.
   the 648+15-row profile from build `de3837c`.
 - `results/prefixpair_de3837c_tables.md` and `_analysis.md`: aggregation and
   strict rowwise comparison with `d310ed5`.
+- `results/displaw_1c32397_counts.csv`: 264 count rows = 8 algorithms × 11
+  dyadic `dispX` scales × 3 seeds at n=1m, all from build `1c32397`.
+- `results/displaw_1c32397_tables.md` and `_analysis.md`: strict aggregation,
+  crossover classification, and descriptive log-scale fits.
 
-The count distributions are `random`, `dup16`, `runs32`, `runs1024`,
-`nearly1`, `tail10`, `saw13`, `organpipe`, and `disp256`; sizes are 10k, 100k,
-and 1m; seeds are 1--3.
+The 648-row milestone distributions are `random`, `dup16`, `runs32`,
+`runs1024`, `nearly1`, `tail10`, `saw13`, `organpipe`, and `disp256`; sizes are
+10k, 100k, and 1m; seeds are 1--3.
 
 ### Robust result: `powersort_fj`
 
@@ -108,14 +114,30 @@ The two 648-row count grids match by identity and every non-comparison metric;
    selected block. Auto2048 saves exactly 512 per seed.
 4. Heap, stack-bound, and merge-span metrics remain exactly unchanged.
 
+## Completed follow-up: dyadic displacement response
+
+The count-only `disp4`--`disp4096` grid has 264 validated rows. Its 24
+`disp256` overlaps exactly reproduce the prefix-aware grid in every semantic
+metric. All 24 algorithm/seed series rise strictly at every sampled doubling.
+
+PFJ improves on Powersort in all 33 pairs. The sampled winner for all three
+seeds is PFJ through X=64, then auto128/auto512/auto1024 at X=128/256/512, and
+auto2048 from X=1024. This is a distributional crossover signal, not a robust
+gate: auto2048 regresses in 24 of 33 pairs, including every case through X=512.
+
+Do not describe the global response as a linear law. OLS residuals have strong
+cap-dependent curvature. Post-transition segments are locally close to one
+extra comparison per element per doubling, but X is Gaussian score-noise sigma,
+not measured displacement, and the algorithms consume no predictions. The
+study has no timing rows and supports no speed claim.
+
 ## Remaining directions
 
 A statistical portfolio gate between PFJ and auto2048 remains promising, but
-must never be called adversarially robust. Other directions are replacing FJ's
-quadratic chain/winner-position bookkeeping and running the
-`disp4`--`disp4096` prediction-law experiment. The latter is inspired by
-Bai--Coester, but these algorithms do not consume predictions and therefore do
-not validate their theorem directly.
+must never be called adversarially robust. The displacement grid now supplies
+sampled crossover labels for such a prototype. The other main direction is
+replacing FJ's quadratic chain/winner-position bookkeeping without changing
+its comparison decisions.
 
 ## Validation commands
 
@@ -139,5 +161,6 @@ python3 scripts/aggregate.py results/milestone_d310ed5_counts.csv \
   results/milestone_d310ed5_times.csv
 python3 scripts/aggregate.py results/prefixpair_de3837c_counts.csv \
   results/prefixpair_de3837c_times.csv
+python3 scripts/aggregate.py results/displaw_1c32397_counts.csv
 git diff --check
 ```
