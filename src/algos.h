@@ -18,7 +18,8 @@ extern uint64_t g_comps;       // incremented by Counting comparator
 extern uint64_t g_merge_cost;  // elements moved by run-merging sorts (post-trim)
 extern size_t g_small_merge;   // hybrid: below this min-run-length, use plain merge
 extern size_t g_fj_run_thresh; // adaptive hybrid: natural prefix >= this -> binary-extend
-extern size_t g_fj_accept;     // fjauto: natural run >= this is accepted, not forced to a block
+extern size_t g_fj_largest_block; // largest FJ block used by the measured call
+extern size_t g_fj_scratch_cap;   // compile-time scratch cap of that FJ variant
 
 struct RawLess {
     template <class T>
@@ -88,6 +89,38 @@ inline size_t compute_minrun(size_t n) {  // CPython: result in [32, 64]
     while (n >= 64) { r |= n & 1; n >>= 1; }
     return n + r;
 }
+
+// Current CPython (3.14+) emits a sequence of floor/ceil run targets rather
+// than one fixed minrun. On all-short inputs this creates exactly 2^e nearly
+// equal runs, avoiding the alphabetic-tree rounding loss of a fixed target.
+struct MinRunGenerator {
+    size_t n, e = 0, mask = 0, current = 0;
+
+    explicit MinRunGenerator(size_t n_, size_t bound = 64,
+                             bool inclusive_cap = false) : n(n_) {
+        assert(bound >= 2);
+        if (inclusive_cap) {
+            // Smallest e with ceil(n / 2^e) <= bound.
+            for (;;) {
+                size_t low_mask = (size_t{1} << e) - 1;
+                size_t q = n >> e;
+                if (q < bound || (q == bound && (n & low_mask) == 0)) break;
+                ++e;
+            }
+        } else {
+            // Exact current-CPython rule for its nominal bound of 64.
+            while ((n >> e) >= bound) ++e;
+        }
+        mask = (size_t{1} << e) - 1;
+    }
+
+    size_t next() {
+        current += n;
+        size_t result = current >> e;
+        current &= mask;
+        return result;
+    }
+};
 
 // ---------------------------------------------------------------------------
 // galloping searches (CPython listsort semantics)
@@ -425,7 +458,7 @@ void timsort(T* a, size_t n, C cmp) {
             binary_insert_extend(a + lo, run, force, cmp);
             run = force;
         }
-        ms.pending.push_back({lo, run, 0});
+        ms.pending.push_back({lo, run, 0, false});
         ms.merge_collapse();
         lo += run;
     }
@@ -437,9 +470,9 @@ void timsort(T* a, size_t n, C cmp) {
 // ---------------------------------------------------------------------------
 
 // BaseSorter: void(T* seg, size_t sorted_prefix, size_t m, C cmp)
-template <class T, class C, class BaseSorter>
-void powersort_impl(T* a, size_t n, C cmp, size_t minrun, BaseSorter base,
-                    size_t small_merge = 0) {
+template <class T, class C, class NextMinrun, class BaseSorter>
+void powersort_impl_next(T* a, size_t n, C cmp, NextMinrun next_minrun,
+                         BaseSorter base, size_t small_merge = 0) {
     if (n < 2) return;
     MergeState<T, C> ms(a, n, cmp);
     ms.small_merge = small_merge;
@@ -447,12 +480,15 @@ void powersort_impl(T* a, size_t n, C cmp, size_t minrun, BaseSorter base,
 
     auto next_run = [&](size_t lo, bool& forced) -> size_t {
         size_t run = count_run(a, lo, n, cmp);
+        size_t minrun = next_minrun();
         forced = false;
         if (run < minrun) {
             size_t force = std::min(minrun, n - lo);
-            base(a + lo, run, force, cmp);
-            run = force;
-            forced = true;
+            if (force > run) {
+                base(a + lo, run, force, cmp);
+                run = force;
+                forced = true;
+            }
         }
         return run;
     };
@@ -472,11 +508,28 @@ void powersort_impl(T* a, size_t n, C cmp, size_t minrun, BaseSorter base,
         p.push_back({lo, run2, 0, f2});
         lo += run2;
     }
-    while (p.size() > 1) ms.merge_at(p.size() - 2);
+    ms.merge_force_collapse();
+}
+
+template <class T, class C, class BaseSorter>
+void powersort_impl(T* a, size_t n, C cmp, size_t minrun, BaseSorter base,
+                    size_t small_merge = 0) {
+    powersort_impl_next(a, n, cmp, [minrun]() { return minrun; }, base,
+                        small_merge);
 }
 
 template <class T, class C>
 void powersort(T* a, size_t n, C cmp) {
+    MinRunGenerator minruns(n);
+    powersort_impl_next(a, n, cmp, [&minruns]() { return minruns.next(); },
+                        [](T* seg, size_t pre, size_t m, C c) {
+                            binary_insert_extend(seg, pre, m, c);
+                        });
+}
+
+// Fixed-minrun ablation matching the pre-3.14 powersort implementation.
+template <class T, class C>
+void powersort_fixed(T* a, size_t n, C cmp) {
     powersort_impl(a, n, cmp, compute_minrun(n),
                    [](T* seg, size_t pre, size_t m, C c) {
                        binary_insert_extend(seg, pre, m, c);
@@ -487,11 +540,12 @@ void powersort(T* a, size_t n, C cmp) {
 // Ford–Johnson merge-insertion (for small blocks; not stable)
 // ---------------------------------------------------------------------------
 
-inline constexpr int FJ_MAX = 128;
+inline constexpr int FJ_MAX = 2048;
 
 // Sort ids[0..m) ascending by v[id]. ids are indices into v (all < FJ_MAX).
-template <class T, class C>
-void fj_core(const T* v, int* ids, int m, C cmp) {
+template <int CAP, class T, class C>
+void fj_core_capped(const T* v, int* ids, int m, C cmp) {
+    static_assert(CAP >= 2 && CAP <= FJ_MAX);
     if (m <= 1) return;
     if (m == 2) {
         if (cmp(v[ids[1]], v[ids[0]])) std::swap(ids[0], ids[1]);
@@ -501,24 +555,26 @@ void fj_core(const T* v, int* ids, int m, C cmp) {
     bool odd = (m & 1) != 0;
     int strag = odd ? ids[m - 1] : -1;
 
-    int w[FJ_MAX / 2 + 1];
-    int partner[FJ_MAX];
+    int w[CAP / 2 + 1];
+    int partner[CAP];
     for (int i = 0; i < half; ++i) {
         int x = ids[2 * i], y = ids[2 * i + 1];
         if (cmp(v[y], v[x])) std::swap(x, y);    // v[x] <= v[y]
         w[i] = y; partner[y] = x;
     }
 
-    fj_core(v, w, half, cmp);                    // sort winners (main chain)
+    fj_core_capped<CAP>(v, w, half, cmp);        // sort winners (main chain)
 
-    int chain[FJ_MAX + 1];
-    int wpos[FJ_MAX / 2 + 1];
+    int chain[CAP + 1];
+    int wpos[CAP / 2 + 1];
     int clen = 0;
     chain[clen++] = partner[w[0]];               // free insertion: l1 <= w1
     for (int i = 0; i < half; ++i) { chain[clen] = w[i]; wpos[i] = clen; ++clen; }
 
     // Jacobsthal group order over 1-based pair index jb (jb == half+1: straggler)
-    static constexpr int jac[] = {1, 3, 5, 11, 21, 43, 85};
+    static constexpr int jac[] = {
+        1, 3, 5, 11, 21, 43, 85, 171, 341, 683, 1365
+    };
     int M = half + (odd ? 1 : 0);
     for (int g = 1; jac[g - 1] < M; ++g) {
         int hi_jb = std::min(jac[g], M);
@@ -539,16 +595,24 @@ void fj_core(const T* v, int* ids, int m, C cmp) {
     std::memcpy(ids, chain, m * sizeof(int));
 }
 
-template <class T, class C>
-void fj_sort_block(T* a, size_t m, C cmp) {
-    assert(m <= (size_t)FJ_MAX);
+template <int CAP, class T, class C>
+void fj_sort_block_capped(T* a, size_t m, C cmp) {
+    static_assert(CAP >= 2 && CAP <= FJ_MAX);
+    assert(m <= (size_t)CAP);
     if (m < 2) return;
-    int ids[FJ_MAX];
+    g_fj_largest_block = std::max(g_fj_largest_block, m);
+    g_fj_scratch_cap = std::max(g_fj_scratch_cap, (size_t)CAP);
+    int ids[CAP];
     for (int i = 0; i < (int)m; ++i) ids[i] = i;
-    fj_core(a, ids, (int)m, cmp);
-    T tmpb[FJ_MAX];
+    fj_core_capped<CAP>(a, ids, (int)m, cmp);
+    T tmpb[CAP];
     std::memcpy(tmpb, a, m * sizeof(T));
     for (size_t i = 0; i < m; ++i) a[i] = tmpb[ids[i]];
+}
+
+template <class T, class C>
+void fj_sort_block(T* a, size_t m, C cmp) {
+    fj_sort_block_capped<FJ_MAX>(a, m, cmp);
 }
 
 // hybrid: powersort merge policy + galloping merges + Ford–Johnson base blocks.
@@ -559,9 +623,23 @@ void hybrid_fj(T* a, size_t n, C cmp) {
     static_assert(BLOCK >= 2 && BLOCK <= FJ_MAX);
     powersort_impl(a, n, cmp, (size_t)BLOCK,
                    [](T* seg, size_t /*pre*/, size_t m, C c) {
-                       fj_sort_block(seg, m, c);
+                       fj_sort_block_capped<BLOCK>(seg, m, c);
                    },
                    g_small_merge);
+}
+
+inline size_t default_fj_run_threshold(size_t block) {
+    if (block <= 36) return 2;
+    if (block <= 78) return 3;
+    if (block <= 128) return 4;
+    size_t ceil_log2 = 0;
+    for (size_t x = block - 1; x; x >>= 1) ++ceil_log2;
+    return std::max<size_t>(4, ceil_log2 - 3);
+}
+
+inline size_t fj_run_threshold(size_t block) {
+    return g_fj_run_thresh ? g_fj_run_thresh
+                           : default_fj_run_threshold(block);
 }
 
 // run-adaptive hybrid: Ford–Johnson on unstructured blocks, but if count_run
@@ -574,10 +652,10 @@ void hybrid_fj_adaptive(T* a, size_t n, C cmp) {
     static_assert(BLOCK >= 2 && BLOCK <= FJ_MAX);
     powersort_impl(a, n, cmp, (size_t)BLOCK,
                    [](T* seg, size_t pre, size_t m, C c) {
-                       if (pre >= g_fj_run_thresh)
+                       if (pre >= fj_run_threshold(m))
                            binary_insert_extend(seg, pre, m, c);
                        else
-                           fj_sort_block(seg, m, c);
+                           fj_sort_block_capped<BLOCK>(seg, m, c);
                    },
                    g_small_merge);
 }
@@ -593,27 +671,55 @@ void hybrid_bin(T* a, size_t n, C cmp) {
                    g_small_merge);
 }
 
-// Auto-tuned FJ hybrid. Block B = ceil(n / 2^k), the largest value <= FJ_MAX:
-// exactly ceil(n/B) <= 2^k runs, so the powersort merge tree is a near-perfect
-// balanced binary tree (the CPython minrun rule, but targeting FJ_MAX instead
-// of 64). Salvage threshold scales with B: extending a natural prefix r to B
-// costs ~(B-r)*lg B, FJ costs ~lg B! regardless of r; crossover at r ~ B/5.
-// small_merge = B+1 plain-merges the level-0 forced pairs (trims can't win
-// between two unstructured blocks); natural runs still always gallop.
+// Comparison-improved powersort: retain CPython's dynamic minrun sequence and
+// merge policy, but choose the cheaper base case after count_run. Ford–Johnson
+// wins when only the mandatory two-element natural prefix is known; binary
+// insertion wins once a third known-sorted element can be reused. For the
+// smallest minruns (<=36), FJ's average advantage is below one comparison and
+// binary insertion always wins after paying for run detection.
 template <class T, class C>
-void hybrid_fj_auto(T* a, size_t n, C cmp) {
-    size_t B = n;
-    while (B > (size_t)FJ_MAX) B = (B + 1) / 2;
-    if (B < 2) B = 2;
-    size_t thresh = std::max(g_fj_run_thresh, B / 5);
-    powersort_impl(a, n, cmp, B,
-                   [thresh](T* seg, size_t pre, size_t m, C c) {
-                       if (pre >= thresh)
+void powersort_fj(T* a, size_t n, C cmp) {
+    MinRunGenerator minruns(n);
+    powersort_impl_next(
+        a, n, cmp, [&minruns]() { return minruns.next(); },
+        [](T* seg, size_t pre, size_t m, C c) {
+            size_t threshold = fj_run_threshold(m);
+            if (pre >= threshold)
+                binary_insert_extend(seg, pre, m, c);
+            else
+                fj_sort_block_capped<64>(seg, m, c);
+        },
+        0);
+}
+
+// Auto-tuned FJ hybrid. A CPython-style generator emits floor/ceil block sizes
+// around n/2^k, with exactly 2^k blocks on unstructured inputs and every block
+// <= MAX_BLOCK. This avoids both merge-tree rounding loss and a short tail.
+// Extending a natural prefix r to B
+// costs ~(B-r)*lg B, FJ costs ~lg B! regardless of r. The crossover is a
+// small absolute prefix length (configured by g_fj_run_thresh), because the
+// measured average FJ advantage over binary insertion is only a few
+// comparisons per block even as B grows.
+// g_small_merge controls the optional plain-merge cutoff. Keeping it below B
+// lets the first block merge trim and gallop, which is especially important
+// on low-cardinality inputs; its random-input overhead is only O(n/B).
+template <size_t MAX_BLOCK, class T, class C>
+void hybrid_fj_auto_capped(T* a, size_t n, C cmp) {
+    static_assert(MAX_BLOCK >= 2 && MAX_BLOCK <= (size_t)FJ_MAX);
+    MinRunGenerator blocks(n, MAX_BLOCK, true);
+    powersort_impl_next(a, n, cmp, [&blocks]() { return blocks.next(); },
+                   [](T* seg, size_t pre, size_t m, C c) {
+                       if (pre >= fj_run_threshold(m))
                            binary_insert_extend(seg, pre, m, c);
                        else
-                           fj_sort_block(seg, m, c);
+                           fj_sort_block_capped<(int)MAX_BLOCK>(seg, m, c);
                    },
-                   std::max(g_small_merge, B + 1));
+                   g_small_merge);
+}
+
+template <class T, class C>
+void hybrid_fj_auto(T* a, size_t n, C cmp) {
+    hybrid_fj_auto_capped<128>(a, n, cmp);
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +903,7 @@ void merge_td_rec(T* a, size_t lo, size_t hi, T* buf, C cmp) {
     merge_td_rec(a, lo, mid, buf, cmp);
     merge_td_rec(a, mid, hi, buf, cmp);
     if (!cmp(a[mid], a[mid - 1])) return;         // halves already ordered
+    g_merge_cost += hi - lo;
     size_t n1 = mid - lo;
     std::memcpy(buf, a + lo, n1 * sizeof(T));
     size_t i = 0, j = mid, d = lo;
