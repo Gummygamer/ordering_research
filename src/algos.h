@@ -629,7 +629,11 @@ void hybrid_fj(T* a, size_t n, C cmp) {
 }
 
 inline size_t default_fj_run_threshold(size_t block) {
-    if (block <= 36) return 2;
+    // For smaller blocks the random-input FJ advantage after reusing the first
+    // known pair is less than one comparison per block and proved sensitive to
+    // the input distribution (notably low-displacement data). Stay with binary
+    // insertion there; blocks 60..78 showed a robust crossover at prefix 3.
+    if (block < 60) return 2;
     if (block <= 78) return 3;
     if (block <= 128) return 4;
     size_t ceil_log2 = 0;
@@ -673,10 +677,11 @@ void hybrid_bin(T* a, size_t n, C cmp) {
 
 // Comparison-improved powersort: retain CPython's dynamic minrun sequence and
 // merge policy, but choose the cheaper base case after count_run. Ford–Johnson
-// wins when only the mandatory two-element natural prefix is known; binary
-// insertion wins once a third known-sorted element can be reused. For the
-// smallest minruns (<=36), FJ's average advantage is below one comparison and
-// binary insertion always wins after paying for run detection.
+// wins on the upper end of CPython's minrun range when only the mandatory
+// two-element natural prefix is known; binary insertion wins once a third
+// known-sorted element can be reused. Smaller minruns conservatively retain
+// binary insertion because their small average FJ gain was distribution-
+// sensitive in the validation grid.
 template <class T, class C>
 void powersort_fj(T* a, size_t n, C cmp) {
     MinRunGenerator minruns(n);
