@@ -74,10 +74,11 @@ schema/identity/`ok` checks, and non-overwriting output. The milestone profile
 runs the full count grid plus five random-1m timing repetitions for Powersort,
 PFJ, and auto2048.
 
-`scripts/aggregate.py` rejects legacy schemas, duplicate samples, mixed
-configurations/builds, and malformed mode rows. It reports mean comparison
-counts with seed ranges, median timings, maximum memory figures, merge span,
-and the random-permutation `lg(n!)` reference.
+`scripts/aggregate.py` rejects legacy schemas, duplicate samples, malformed
+mode rows, and attempts to pool mixed configurations/builds within one logical
+group. It reports mean comparison counts with seed ranges, median timings,
+maximum memory figures, merge span, and the random-permutation `lg(n!)`
+reference.
 
 The seven earlier CSV files are explicitly legacy in `results/README.md`.
 

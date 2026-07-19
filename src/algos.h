@@ -544,12 +544,14 @@ void powersort_fixed(T* a, size_t n, C cmp) {
 inline constexpr int FJ_MAX = 2048;
 
 // Sort ids[0..m) ascending by v[id]. ids are indices into v (all < FJ_MAX).
-template <int CAP, class T, class C>
+template <int CAP, bool FIRST_PAIR_ORDERED, class T, class C>
 void fj_core_capped(const T* v, int* ids, int m, C cmp) {
     static_assert(CAP >= 2 && CAP <= FJ_MAX);
     if (m <= 1) return;
     if (m == 2) {
-        if (cmp(v[ids[1]], v[ids[0]])) std::swap(ids[0], ids[1]);
+        if constexpr (!FIRST_PAIR_ORDERED) {
+            if (cmp(v[ids[1]], v[ids[0]])) std::swap(ids[0], ids[1]);
+        }
         return;
     }
     int half = m / 2;
@@ -560,11 +562,17 @@ void fj_core_capped(const T* v, int* ids, int m, C cmp) {
     int partner[CAP];
     for (int i = 0; i < half; ++i) {
         int x = ids[2 * i], y = ids[2 * i + 1];
-        if (cmp(v[y], v[x])) std::swap(x, y);    // v[x] <= v[y]
+        if constexpr (FIRST_PAIR_ORDERED) {
+            if (i != 0 && cmp(v[y], v[x])) std::swap(x, y);
+        } else {
+            if (cmp(v[y], v[x])) std::swap(x, y);
+        }
         w[i] = y; partner[y] = x;
     }
 
-    fj_core_capped<CAP>(v, w, half, cmp);        // sort winners (main chain)
+    // Only the root input pair came from count_run. Winner recursion has no
+    // corresponding fact to reuse and always takes the ordinary path.
+    fj_core_capped<CAP, false>(v, w, half, cmp); // sort winners (main chain)
 
     int chain[CAP + 1];
     int wpos[CAP / 2 + 1];
@@ -596,8 +604,8 @@ void fj_core_capped(const T* v, int* ids, int m, C cmp) {
     std::memcpy(ids, chain, m * sizeof(int));
 }
 
-template <int CAP, class T, class C>
-void fj_sort_block_capped(T* a, size_t m, C cmp) {
+template <int CAP, bool FIRST_PAIR_ORDERED, class T, class C>
+void fj_sort_block_capped_impl(T* a, size_t m, C cmp) {
     static_assert(CAP >= 2 && CAP <= FJ_MAX);
     assert(m <= (size_t)CAP);
     if (m < 2) return;
@@ -605,10 +613,24 @@ void fj_sort_block_capped(T* a, size_t m, C cmp) {
     g_fj_scratch_cap = std::max(g_fj_scratch_cap, (size_t)CAP);
     int ids[CAP];
     for (int i = 0; i < (int)m; ++i) ids[i] = i;
-    fj_core_capped<CAP>(a, ids, (int)m, cmp);
+    fj_core_capped<CAP, FIRST_PAIR_ORDERED>(a, ids, (int)m, cmp);
     T tmpb[CAP];
     std::memcpy(tmpb, a, m * sizeof(T));
     for (size_t i = 0; i < m; ++i) a[i] = tmpb[ids[i]];
+}
+
+template <int CAP, class T, class C>
+void fj_sort_block_capped(T* a, size_t m, C cmp) {
+    fj_sort_block_capped_impl<CAP, false>(a, m, cmp);
+}
+
+// count_run has already established a[0] <= a[1] under cmp. Reusing that fact
+// skips exactly the ordinary root pair comparison; all later FJ decisions are
+// unchanged. This entry point is only for base calls made after count_run.
+template <int CAP, class T, class C>
+void fj_sort_block_capped_known_pair(T* a, size_t m, C cmp) {
+    assert(m >= 2);
+    fj_sort_block_capped_impl<CAP, true>(a, m, cmp);
 }
 
 template <class T, class C>
@@ -624,7 +646,7 @@ void hybrid_fj(T* a, size_t n, C cmp) {
     static_assert(BLOCK >= 2 && BLOCK <= FJ_MAX);
     powersort_impl(a, n, cmp, (size_t)BLOCK,
                    [](T* seg, size_t /*pre*/, size_t m, C c) {
-                       fj_sort_block_capped<BLOCK>(seg, m, c);
+                       fj_sort_block_capped_known_pair<BLOCK>(seg, m, c);
                    },
                    g_small_merge);
 }
@@ -660,7 +682,7 @@ void hybrid_fj_adaptive(T* a, size_t n, C cmp) {
                        if (pre >= fj_run_threshold(m))
                            binary_insert_extend(seg, pre, m, c);
                        else
-                           fj_sort_block_capped<BLOCK>(seg, m, c);
+                           fj_sort_block_capped_known_pair<BLOCK>(seg, m, c);
                    },
                    g_small_merge);
 }
@@ -693,7 +715,7 @@ void powersort_fj(T* a, size_t n, C cmp) {
             if (pre >= threshold)
                 binary_insert_extend(seg, pre, m, c);
             else
-                fj_sort_block_capped<64>(seg, m, c);
+                fj_sort_block_capped_known_pair<64>(seg, m, c);
         },
         0);
 }
@@ -718,7 +740,7 @@ void hybrid_fj_auto_capped(T* a, size_t n, C cmp) {
                        if (pre >= fj_run_threshold(m))
                            binary_insert_extend(seg, pre, m, c);
                        else
-                           fj_sort_block_capped<(int)MAX_BLOCK>(seg, m, c);
+                           fj_sort_block_capped_known_pair<(int)MAX_BLOCK>(seg, m, c);
                    },
                    g_small_merge);
 }

@@ -282,6 +282,48 @@ static bool selftest() {
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }
+
+    // The prefix-aware entry point must be exactly the ordinary FJ path minus
+    // the root comparison whose false result was established by count_run.
+    // Include large sizes around the final Jacobsthal groups used by CAP=2048.
+    {
+        const size_t pair_sizes[] = {
+            2, 3, 4, 5, 60, 61, 64, 128, 255, 512, 1024, 1365, 2047,
+        };
+        std::mt19937_64 rng(0xF17A57u);
+        size_t checks = 0, fails = 0;
+        auto check = [&](std::vector<u64> input) {
+            if (lab::RawLess{}(input[1], input[0])) std::swap(input[0], input[1]);
+            std::vector<u64> ordinary = input, known = input;
+            lab::g_comps = 0;
+            lab::fj_sort_block_capped<lab::FJ_MAX>(
+                ordinary.data(), ordinary.size(), lab::Counting<lab::RawLess>{});
+            u64 ordinary_comps = lab::g_comps;
+            lab::g_comps = 0;
+            lab::fj_sort_block_capped_known_pair<lab::FJ_MAX>(
+                known.data(), known.size(), lab::Counting<lab::RawLess>{});
+            u64 known_comps = lab::g_comps;
+            ++checks;
+            if (ordinary != known || ordinary_comps != known_comps + 1) ++fails;
+        };
+        for (size_t n : pair_sizes) {
+            std::vector<u64> unique(n);
+            for (size_t i = 0; i < n; ++i) unique[i] = i;
+            std::shuffle(unique.begin(), unique.end(), rng);
+            check(unique);
+
+            std::vector<u64> duplicate(n);
+            for (u64& value : duplicate) value = rng() & 15;
+            check(duplicate);
+
+            std::vector<u64> descending(n);
+            for (size_t i = 0; i < n; ++i) descending[i] = n - 1 - i;
+            check(descending);
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "fj_known_pair",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
     return all_ok;
 }
 

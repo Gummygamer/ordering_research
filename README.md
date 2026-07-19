@@ -46,14 +46,15 @@ overwrite result files. Its milestone profile uses three count seeds and five
 timing repetitions for the three headline algorithms:
 
 ```sh
-python3 scripts/run_bench.py --profile milestone --build-id d310ed5 \
-  --output results/milestone_d310ed5_all.csv
-python3 scripts/aggregate.py results/milestone_d310ed5_all.csv \
-  -o results/milestone_d310ed5_all.md
+python3 scripts/run_bench.py --profile milestone \
+  --output results/milestone_local_all.csv
+python3 scripts/aggregate.py results/milestone_local_all.csv \
+  -o results/milestone_local_all.md
 ```
 
-Use an explicit build ID only when it truthfully identifies the compiled
-source. The committed validation was split into
+By default the driver embeds the current 12-character commit hash. Use an
+explicit build ID only when it truthfully identifies the compiled source. The
+committed `d310ed5` validation was split into
 `results/milestone_d310ed5_counts.csv` and
 `results/milestone_d310ed5_times.csv`; the combined generated tables are in
 `results/milestone_d310ed5_tables.md`.
