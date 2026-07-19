@@ -1,23 +1,22 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-07-19 after validating the conservative adaptive-FJ milestone,
-the prefix-aware FJ follow-up, and the dyadic displacement-response study. The
+Updated 2026-07-19 after validating the sampled portfolio gate. The
 filesystem and Git history remain authoritative; check both before acting.
 
 ## Current state
 
-The conservative crossover baseline is `d310ed5`; the algorithm source last
-changed at `de3837c`, which reuses the first pair ordered by `count_run` in
-selected FJ base blocks. The baseline and prefix-aware raw files record those
-build IDs; the displacement grid records build `1c32397`, whose algorithm
-source is unchanged from `de3837c`. `powersort` matches the audited current
+The gate implementation commit is `e67f8ae`; its four result files record
+that build ID. The three reference algorithms (`powersort`, `powersort_fj`,
+`hybrid_fjauto2048`) are unchanged since `de3837c` — the 198 gate-grid
+identities overlapping the committed `de3837c`/`1c32397` grids reproduce
+every semantic metric exactly. `powersort` matches the audited current
 CPython development design's varying floor/ceiling minrun targets and
 size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
 ablation.
 
-The registry has 34 entries: 33 comparison algorithms and one LSD radix speed
-reference. Ford--Johnson supports caps through 2048 with cap-sized scratch
-arrays and an extended Jacobsthal schedule. The benchmark schema is:
+The registry has 35 entries: 34 comparison algorithms and one LSD radix
+speed reference. Ford--Johnson supports caps through 2048 with cap-sized
+scratch arrays and an extended Jacobsthal schedule. The benchmark schema is:
 
 ```text
 algo,dist,n,seed,mode,rep,time_ns,comparisons,heap_aux_bytes,
@@ -30,114 +29,97 @@ summarized by their median.
 
 ## Validated milestone data
 
-- `results/milestone_d310ed5_counts.csv`: 648 rows = 8 algorithms ×
-  9 distributions × 3 sizes × 3 seeds.
-- `results/milestone_d310ed5_times.csv`: 15 rows = 3 algorithms × 5 serial
-  repetitions.
-- `results/milestone_d310ed5_tables.md`: strict aggregation of both files.
-- Every row has `ok=1` and `build_id=d310ed5`.
-- `results/prefixpair_de3837c_counts.csv` and `_times.csv`: an exact repeat of
-  the 648+15-row profile from build `de3837c`.
-- `results/prefixpair_de3837c_tables.md` and `_analysis.md`: aggregation and
-  strict rowwise comparison with `d310ed5`.
-- `results/displaw_1c32397_counts.csv`: 264 count rows = 8 algorithms × 11
-  dyadic `dispX` scales × 3 seeds at n=1m, all from build `1c32397`.
-- `results/displaw_1c32397_tables.md` and `_analysis.md`: strict aggregation,
-  crossover classification, and descriptive log-scale fits.
-
-The 648-row milestone distributions are `random`, `dup16`, `runs32`,
-`runs1024`, `nearly1`, `tail10`, `saw13`, `organpipe`, and `disp256`; sizes are
-10k, 100k, and 1m; seeds are 1--3.
+- `results/milestone_d310ed5_counts.csv` / `_times.csv` / `_tables.md`: the
+  648+15-row conservative-crossover milestone (8 algorithms × 9
+  distributions × 3 sizes × 3 seeds).
+- `results/prefixpair_de3837c_counts.csv` / `_times.csv` / `_tables.md` /
+  `_analysis.md`: exact case-for-case repeat after reusing the detected
+  first pair; 335 rows improved, 313 tied, none regressed.
+- `results/displaw_1c32397_counts.csv` / `_tables.md` / `_analysis.md`: 264
+  count rows over `disp4`--`disp4096`, the crossover-label source.
+- `results/gate_e67f8ae_counts.csv` (276 rows), `_heldout_counts.csv` (84
+  rows, fresh seeds 4--6, off-dyadic sigmas), `_times.csv` (20 rows),
+  `_tables.md`, `_analysis.md`: the portfolio-gate study.
+- Every row has `ok=1` and the exact build ID of its commit.
 
 ### Robust result: `powersort_fj`
 
-Against exact Powersort, PFJ had 0 regressions, 60 ties, and 21 improvements
-across all 81 matched distribution/size/seed cases. All 54 cases at 10k and
-100k tie intentionally because their generated minruns are below 60. At random
-1m, mean comparisons/element are:
-
-| algorithm | comparisons/n | seed range |
-|---|---:|---:|
-| `powersort` | 18.599039 | 18.598521--18.599329 |
-| `powersort_fj` (`d310ed5`) | 18.590897 | 18.590682--18.591090 |
-| `powersort_fj` (`de3837c`) | 18.580018 | 18.579784--18.580189 |
-
-Current PFJ saves 0.019021 comparisons/element there. It has the same heap peak
-and merge span as Powersort; its maximum conservative FJ stack bound is 6,204 B.
-The algorithm is unstable and 12.4% slower in the new timing sample.
+Unchanged since `de3837c`: 0 regressions, 60 ties, 21 improvements across
+the 81 milestone pairs; 18.580018 mean comparisons/element at random 1m
+(saving 0.019021 over Powersort), same heap peak and merge span, 6,204 B
+conservative FJ stack bound, unstable, ~12% slower than Powersort.
 
 ### Non-robust frontier: `hybrid_fjauto2048`
 
-At random 1m, current auto caps 128/256/512/1024/2048 average
-18.553594/18.537870/18.528401/18.523247/18.520456 comparisons per element.
-The finite-size bound is 18.488885, so auto2048 is 0.031571 above it and reduces
-Powersort's excess by 71.3%.
+Unchanged since `de3837c`: 18.520456 at random 1m, 0.031571 above the
+finite-size bound, but 54 regressions among 72 non-random milestone cases
+with penalties up to +6.597/elem (`nearly1`), a 273,272 B stack bound, and
+~1.8× Powersort's time.
 
-Do not generalize that frontier. Among 72 non-random cases, auto2048 has
-54 regressions, 9 ties, and 9 improvements. Its mean penalty at 1m reaches
-+1.834 comparisons/element on `dup16`, +5.790 on `runs1024`, and +6.597 on
-`nearly1`. Its stack bound is 273,272 B and its new median random-1m time is
-141.617 ns/element versus 72.585 for Powersort.
+### New: `hybrid_gate` — bounded-downside portfolio
+
+`hybrid_gate` probes with the counted comparator (two-equal-pairs duplicate
+veto, adjacent-descent window [0.3, 0.7], inversion floors 0.35/0.30/0.15 at
+distances 64/256/1024, fixed-seed probe indices, all thresholds fixed before
+the grid ran) and selects auto2048 only when every test passes; vetoes fall
+back to PFJ, and n < 131,072 is exactly PFJ with zero probes.
+
+Validated at build `e67f8ae`:
+
+- Random 1m: 18.526328 comparisons/element (held-out seeds 4--6:
+  18.526437), capturing 92.5% of auto2048's saving over Powersort.
+- Worst regression vs Powersort in all 360 count rows: +0.005839/elem
+  (organpipe = probe cost). Classification vs Powersort: 54/6/9 main,
+  21/0/0 held out; the nine regressions are organpipe, `runs1024`, and
+  `tail10`, all bounded by probe cost.
+- Chose the strictly better branch in 76 of 81 gated decisions; the
+  measured crossover sits in sigma (512, 768) bracketing the predicted
+  ~700, and every off-dyadic held-out sigma routed correctly.
+- Known limitation: the conservative duplicate veto forfeits 0.139/elem on
+  `dup256`, where auto2048 *improves* (duplicate harm has an unmeasured
+  cardinality crossover in (16, 256); `dup16` still regresses +1.861).
+- Probe accounting is exact: every gate row equals one standalone branch
+  plus 33--5,903 comparisons; selftest (`gate_account`) enforces
+  probe-plus-branch equality and byte-identical output on ten inputs.
+- Serial medians: 71.795/77.175/130.576/131.491 ns/elem for
+  Powersort/PFJ/auto2048/gate. Not adversarially robust (fixed public probe
+  seed); unstable like both branches.
 
 ## Benchmark tooling
 
-`scripts/run_bench.py` supports `quick`, `milestone`, and `full` profiles,
-parallel count mode, strictly serial timing, exact build-ID injection, strict
-schema/identity/`ok` checks, and non-overwriting output. The milestone profile
-runs the full count grid plus five random-1m timing repetitions for Powersort,
-PFJ, and auto2048.
+`scripts/run_bench.py` supports `quick`, `milestone`, `gate`,
+`gate-heldout`, and `full` profiles, parallel count mode, strictly serial
+timing, exact build-ID injection, strict schema/identity/`ok` checks, and
+non-overwriting output. The `gate` profile covers the milestone
+distributions plus `dup256`, the dyadic `dispX` sweep, small-n fallback
+sizes, and a serial random-1m timing sample; `gate-heldout` runs fresh
+seeds 4--6 on random plus off-dyadic sigmas.
 
 `scripts/aggregate.py` rejects legacy schemas, duplicate samples, malformed
-mode rows, and attempts to pool mixed configurations/builds within one logical
-group. It reports mean comparison counts with seed ranges, median timings,
-maximum memory figures, merge span, and the random-permutation `lg(n!)`
-reference.
+mode rows, and attempts to pool mixed configurations/builds within one
+logical group.
 
 The seven earlier CSV files are explicitly legacy in `results/README.md`.
 
-Acceptance checks passed for the baseline and prefix-aware code: release
-selftest for all 34 registry entries, 39 direct known-pair equivalence checks,
-strict warnings-as-errors compilation, ASan/UBSan selftest with leak detection
-disabled, Python byte-compilation, strict aggregation, and `git diff --check`.
-The two 648-row count grids match by identity and every non-comparison metric;
-335 rows improve, 313 tie, and none regress.
-
-## Completed follow-up: reuse the first pair
-
-`de3837c` implemented the previously proposed root-only known-pair path:
-
-1. Only the root input pair skips its comparison; winner recursion and
-   standalone `fjcounts` use the ordinary path.
-2. The selftest verifies identical output and exactly one fewer comparison for
-   unique, duplicate, and descending inputs through block 2047.
-3. At random 1m, PFJ saves another 10,839--10,901 comparisons per seed, one per
-   selected block. Auto2048 saves exactly 512 per seed.
-4. Heap, stack-bound, and merge-span metrics remain exactly unchanged.
-
-## Completed follow-up: dyadic displacement response
-
-The count-only `disp4`--`disp4096` grid has 264 validated rows. Its 24
-`disp256` overlaps exactly reproduce the prefix-aware grid in every semantic
-metric. All 24 algorithm/seed series rise strictly at every sampled doubling.
-
-PFJ improves on Powersort in all 33 pairs. The sampled winner for all three
-seeds is PFJ through X=64, then auto128/auto512/auto1024 at X=128/256/512, and
-auto2048 from X=1024. This is a distributional crossover signal, not a robust
-gate: auto2048 regresses in 24 of 33 pairs, including every case through X=512.
-
-Do not describe the global response as a linear law. OLS residuals have strong
-cap-dependent curvature. Post-transition segments are locally close to one
-extra comparison per element per doubling, but X is Gaussian score-noise sigma,
-not measured displacement, and the algorithms consume no predictions. The
-study has no timing rows and supports no speed claim.
+Acceptance checks passed for the gate build: release selftest for all 35
+registry entries plus the 39 known-pair checks and 10 gate-accounting
+checks, strict warnings-as-errors compilation, ASan/UBSan selftest with
+leak detection disabled, Python byte-compilation, strict aggregation of all
+three gate CSVs, and `git diff --check`.
 
 ## Remaining directions
 
-A statistical portfolio gate between PFJ and auto2048 remains promising, but
-must never be called adversarially robust. The displacement grid now supplies
-sampled crossover labels for such a prototype. The other main direction is
-replacing FJ's quadratic chain/winner-position bookkeeping without changing
-its comparison decisions.
+1. Map the duplicate-cardinality response of large-FJ blocks (needs `dup4`
+   through `dup1024`-style generators) and replace the gate's
+   two-equal-pairs veto with a cardinality estimate at the measured
+   crossover.
+2. Replace FJ's quadratic chain/winner-position bookkeeping without
+   changing its comparison decisions (speed only; PFJ is ~7%, auto2048
+   ~82% slower than Powersort in the latest sample).
+3. Optional gate extensions, each needing fresh held-out validation:
+   a multi-cap ladder (128--1024) from the displacement winners, and
+   smaller-n gating with rescaled probe budgets (10k/100k currently forfeit
+   auto2048's ~0.1/elem random-input win by design).
 
 ## Validation commands
 
@@ -162,5 +144,7 @@ python3 scripts/aggregate.py results/milestone_d310ed5_counts.csv \
 python3 scripts/aggregate.py results/prefixpair_de3837c_counts.csv \
   results/prefixpair_de3837c_times.csv
 python3 scripts/aggregate.py results/displaw_1c32397_counts.csv
+python3 scripts/aggregate.py results/gate_e67f8ae_counts.csv \
+  results/gate_e67f8ae_heldout_counts.csv results/gate_e67f8ae_times.csv
 git diff --check
 ```

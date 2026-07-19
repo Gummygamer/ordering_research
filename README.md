@@ -16,7 +16,11 @@ comparisons per element on random permutations of one million elements, saving
 0.019021 over Powersort. The more aggressive `hybrid_fjauto2048` averaged
 18.520456, only 0.031571 above `lg(n!)/n = 18.488885`, but it remains almost
 twice as slow and often regresses badly on structured inputs. It is a sampled
-random-input frontier, not the robust recommendation.
+random-input frontier, not the robust recommendation. `hybrid_gate` bridges
+the two by probing the input through the counted comparator: on the same
+random inputs it reaches 18.526328 including probe cost, while its worst
+observed regression against Powersort on any tested distribution is +0.0058
+comparisons per element.
 
 ## Build and run
 
@@ -121,7 +125,7 @@ formats.
 
 ## Algorithms
 
-The registry includes 33 comparison algorithms plus one radix reference:
+The registry includes 34 comparison algorithms plus one radix reference:
 standard-library baselines (`std_sort`, `std_stable`),
 heapsort, three quicksort variants (`quick_mo3`, `dual_pivot`, `bl_quick`), a
 top-down mergesort, Timsort, Powersort, binary-insertion and Ford--Johnson
@@ -148,6 +152,12 @@ The run-merging family is the focus:
   creates a power-of-two number of nearly equal blocks on all-short-run input,
   avoiding a short tail and fixed-block merge-tree rounding loss. Selected FJ
   blocks likewise reuse the detected first pair.
+- `hybrid_gate` is a sampled binary portfolio over `powersort_fj` and
+  `hybrid_fjauto2048`. It first probes the input with the counted comparator
+  (a duplicate veto, an adjacent-descent window, and inversion fractions at
+  distances 64/256/1024, all from a fixed-seed index generator) and selects
+  auto2048 only when every deep-disorder test passes. Below n=131,072 it is
+  exactly `powersort_fj` with zero probes.
 - `hybrid_bin21`, `32`, `62`, and `123` substitute stable binary insertion at
   the same fixed block sizes, isolating the Ford--Johnson contribution.
 
@@ -285,6 +295,33 @@ is the generator's Gaussian score-noise parameter, not observed displacement;
 the algorithms consume no predictions and do not validate a
 learning-augmented guarantee. Full data and fit diagnostics are in
 `results/displaw_1c32397_analysis.md`.
+
+### 6. A sampled portfolio gate with bounded downside (`e67f8ae`)
+
+`hybrid_gate` converts the displacement study's crossover labels into a
+running algorithm. Its probe thresholds were fixed from the `dispX` Gaussian
+model and seeds 1--3 before the evaluation grid ran; evaluation then added
+fresh seeds 4--6 and off-dyadic sigmas 96--3,072 that no design constant had
+seen. Every gate count row equals one standalone branch run plus a probe
+cost of 33--5,903 comparisons, verified row for row, and the 198 identities
+shared with the committed `de3837c` and `1c32397` grids reproduce exactly.
+
+At random n=1m the gate averages 18.526328 comparisons per element
+(held-out: 18.526437), capturing 92.5% of auto2048's saving over Powersort
+and removing 66.0% of Powersort's finite-size excess, with the same heap
+peak and a 273,272 B FJ stack bound inherited from the auto2048 branch. Its
+worst regression against Powersort across all 360 count rows is +0.005839
+comparisons per element (organpipe's probe cost); paired classification is
+54/6/9 on the main grid and 21/0/0 held out. The gate picked the strictly
+better branch in 76 of 81 gated decisions, including the entire off-dyadic
+sweep; the measured branch crossover lies in sigma (512, 768), bracketing
+the model-predicted ~700. The five mischoices are `dup256` × 3 — the
+conservative duplicate veto forfeits 0.139/elem because auto2048 *improves*
+on 256-value duplicates while still regressing +1.861/elem on `dup16` — and
+`tail10` × 2, whose branch gap is inside seed noise. Serial medians are
+71.795/77.175/130.576/131.491 ns per element for
+Powersort/PFJ/auto2048/gate. The gate is distributional and deliberately
+veto-biased; with a fixed public probe seed it is not adversarially robust.
 
 ## Interpretation and caveats
 

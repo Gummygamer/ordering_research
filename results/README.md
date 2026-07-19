@@ -1,5 +1,30 @@
 # Results inventory
 
+## Sampled portfolio-gate study (`e67f8ae`)
+
+- `gate_e67f8ae_counts.csv`: 276 count rows = `powersort`, `powersort_fj`,
+  `hybrid_fjauto2048`, and `hybrid_gate` over the nine milestone
+  distributions plus `dup256`, the dyadic `disp4`--`disp4096` sweep, and the
+  random 10k/100k/262,144 fallback sizes, seeds 1--3.
+- `gate_e67f8ae_heldout_counts.csv`: 84 count rows on fresh seeds 4--6 with
+  random plus off-dyadic `disp96/192/384/768/1536/3072`, none of which
+  informed the gate's design constants.
+- `gate_e67f8ae_times.csv`: 20 strictly serial timing rows, random n=1m.
+- `gate_e67f8ae_tables.md`: strict aggregation of all three CSV files.
+- `gate_e67f8ae_analysis.md`: reproduction checks against the two committed
+  reference grids, probe-cost accounting, branch-decision classification,
+  and the bounded claims.
+
+Every row has the current 16-column schema, `ok=1`, and `build_id=e67f8ae`.
+The 198 identities overlapping the `de3837c` and `1c32397` grids reproduce
+every semantic metric exactly.
+
+```sh
+python3 scripts/aggregate.py results/gate_e67f8ae_counts.csv \
+  results/gate_e67f8ae_heldout_counts.csv results/gate_e67f8ae_times.csv \
+  --title 'Portfolio gate study (e67f8ae)'
+```
+
 ## Dyadic displacement-response study (`1c32397`)
 
 - `displaw_1c32397_counts.csv`: 264 count rows covering 8 algorithms, 11

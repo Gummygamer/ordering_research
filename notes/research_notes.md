@@ -135,10 +135,38 @@ empirical observation that must not be extrapolated. X is Gaussian score-noise
 sigma, not observed displacement, and the algorithms do not consume
 predictions; the study does not validate Bai--Coester's theorem.
 
-## 7. Remaining credible experiments
+## 7. Sampled portfolio gate (`e67f8ae`)
 
-1. Prototype a comparator-counted statistical gate between PFJ and auto2048.
-   Use the sampled displacement crossovers as training evidence, and treat the
-   gate as distributional and fallible, never adversarially robust.
+`hybrid_gate` probes the input through the counted comparator, then runs
+either PFJ or auto2048: a two-equal-pairs duplicate veto, an adjacent-descent
+window, and inversion floors at distances 64/256/1024 whose constants were
+fixed from the Gaussian model `P(inv at d) ~= Phi(-d/(sqrt(2) sigma))` and
+the section-6 crossover labels before the evaluation grid was run. Below
+n=131,072 it is exactly PFJ with zero probes. Every gate row equals one
+standalone branch plus a probe cost of 33--5,903 comparisons, and the 198
+row identities shared with the `de3837c`/`1c32397` grids reproduce exactly.
+
+At random 1m the gate reaches 18.526328 comparisons per element (held-out
+seeds 4--6: 18.526437), capturing 92.5% of auto2048's saving over Powersort
+while its worst regression against Powersort anywhere in 360 rows is +0.0058
+per element — auto2048's own worst is +6.597. It chose the strictly better
+branch in 76 of 81 gated decisions, including every off-dyadic held-out
+sigma; the measured PFJ/auto2048 crossover lies in (512, 768), bracketing
+the predicted ~700. The five mischoices: `dup256` × 3 (the conservative veto
+forfeits 0.139/elem — auto2048 *improves* on 256-value duplicates while
+still regressing +1.861 on `dup16`, so duplicate harm has an unmeasured
+cardinality crossover in (16, 256)) and `tail10` × 2 (branch gap inside seed
+noise). Serial medians: 71.795/77.175/130.576/131.491 ns per element for
+Powersort/PFJ/auto2048/gate. Distributional evidence only; the fixed probe
+seed is trivially adversarially gameable, and both branches are unstable.
+
+## 8. Remaining credible experiments
+
+1. Map the duplicate-cardinality response of large-FJ blocks (`dup2` through
+   `dup1024`-scale generators) and replace the gate's two-equal-pairs veto
+   with a cardinality estimate at the measured crossover.
 2. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
    without changing comparison count.
+3. Optionally extend the gate toward a multi-cap ladder (128--1024) using the
+   section-6 winners, and toward smaller n with rescaled probe budgets; both
+   need fresh held-out validation.
