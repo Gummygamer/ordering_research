@@ -20,7 +20,11 @@ random-input frontier, not the robust recommendation. `hybrid_gate` bridges
 the two by probing the input through the counted comparator: on the same
 random inputs it reaches 18.526328 including probe cost, while its worst
 observed regression against Powersort on any tested distribution is +0.0058
-comparisons per element.
+comparisons per element. A dedicated cardinality sweep (`498b627`) located
+the point where duplicates stop hurting the aggressive branch: auto2048
+loses to `powersort_fj` for up to 96 distinct values but wins from 128
+upward, so the gate's conservative duplicate veto forfeits at most
+0.140/elem on high-cardinality duplicate inputs.
 
 ## Build and run
 

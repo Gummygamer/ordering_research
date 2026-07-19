@@ -160,11 +160,31 @@ noise). Serial medians: 71.795/77.175/130.576/131.491 ns per element for
 Powersort/PFJ/auto2048/gate. Distributional evidence only; the fixed probe
 seed is trivially adversarially gameable, and both branches are unstable.
 
-## 8. Remaining credible experiments
+## 8. Duplicate-cardinality response (`498b627`)
 
-1. Map the duplicate-cardinality response of large-FJ blocks (`dup2` through
-   `dup1024`-scale generators) and replace the gate's two-equal-pairs veto
-   with a cardinality estimate at the measured crossover.
+Generalizing the duplicate generators to `dupK` (i.i.d. `rng() % K`,
+bit-identical to the old masks for dyadic K) and sweeping K at n=1m shows
+auto2048's duplicate penalty against PFJ decaying smoothly from +4.006/elem
+at K=2 through +0.176 at K=96, then **crossing zero in K ∈ (96, 128)**
+(−0.030 at K=128), seed-stable at every K on both the dyadic seeds-1--3
+grid and the off-dyadic seeds-4--6 held-out grid. The benefit side is
+non-monotone: it peaks at `dup256` (−0.139) and relaxes toward auto2048's
+random-limit saving (−0.0596). PFJ beats Powersort at every K. The gate
+vetoed all 54 dup cases to PFJ via the two-equal-pairs early exit — correct
+for K ≤ 96 (regret = probe cost ≤ 0.000139/elem), wrong for all 21
+strict-winner decisions at K ≥ 128 (forfeit ≤ 0.140/elem at `dup256`), and
+per the sampling model the two-pair rule is only probabilistically closed
+above K ≈ 700. The analysis pre-registers the stage-2 replacement before
+any stage-2 grid: count equal pairs over the full adjacent sample and veto
+iff `equal_pairs * 112 >= adjacent` (boundary K = 112, soft by design in
+the (96, 128) bracket where the branch gap is ≤ ±0.18; gross-error rates
+≤ 0.005 at K ≤ 64 and ≤ 0.016 at K ≥ 192), evaluated on fresh seeds 7--9.
+
+## 9. Remaining credible experiments
+
+1. Stage 2 of the duplicate study: implement the pre-registered K=112
+   equality-count veto (section 8) and validate it on fresh seeds 7--9
+   across the dup sweep plus a non-dup safety grid.
 2. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
    without changing comparison count.
 3. Optionally extend the gate toward a multi-cap ladder (128--1024) using the

@@ -1,5 +1,29 @@
 # Results inventory
 
+## Duplicate-cardinality response study (`498b627`)
+
+- `duplaw_498b627_counts.csv`: 120 count rows = `powersort`, `powersort_fj`,
+  `hybrid_fjauto2048`, and `hybrid_gate` over dyadic `dup2`--`dup1024` at
+  n=1m, seeds 1--3.
+- `duplaw_498b627_heldout_counts.csv`: 96 count rows on fresh seeds 4--6
+  with off-dyadic `dup6/12/24/48/96/192/384/768`, cardinalities no earlier
+  generator could produce.
+- `duplaw_498b627_tables.md`: strict aggregation of both CSV files.
+- `duplaw_498b627_analysis.md`: identity reproduction, the measured
+  auto2048-vs-PFJ crossover at K in (96, 128), gate veto accounting, and the
+  pre-registered K=112 veto replacement for stage 2.
+
+Every row has the current 16-column schema, `ok=1`, and `build_id=498b627`.
+The 24 identities overlapping the gate grid (`dup16`/`dup256`) reproduce
+every semantic metric exactly. The study contains no timing rows; count-mode
+`time_ns` is not speed data.
+
+```sh
+python3 scripts/aggregate.py results/duplaw_498b627_counts.csv \
+  results/duplaw_498b627_heldout_counts.csv \
+  --title 'Duplicate-cardinality response study (498b627)'
+```
+
 ## Sampled portfolio-gate study (`e67f8ae`)
 
 - `gate_e67f8ae_counts.csv`: 276 count rows = `powersort`, `powersort_fj`,

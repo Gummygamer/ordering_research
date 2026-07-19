@@ -1,15 +1,18 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-07-19 after validating the sampled portfolio gate. The
+Updated 2026-07-19 after mapping the duplicate-cardinality response. The
 filesystem and Git history remain authoritative; check both before acting.
 
 ## Current state
 
-The gate implementation commit is `e67f8ae`; its four result files record
-that build ID. The three reference algorithms (`powersort`, `powersort_fj`,
-`hybrid_fjauto2048`) are unchanged since `de3837c` — the 198 gate-grid
-identities overlapping the committed `de3837c`/`1c32397` grids reproduce
-every semantic metric exactly. `powersort` matches the audited current
+The latest code commit is `498b627`, which generalized the duplicate
+generators to `dupK` (i.i.d. `rng() % K`, bit-identical to the former
+dyadic masks) and added the `duplaw`/`duplaw-heldout` count profiles; its
+two result files record that build ID. All 35 registry algorithms are
+semantically unchanged since `e67f8ae` (gate) and `de3837c` (references) —
+the 24 duplaw identities overlapping the gate grid reproduce every
+semantic metric exactly, as do the 198 gate-grid identities against the
+`de3837c`/`1c32397` grids. `powersort` matches the audited current
 CPython development design's varying floor/ceiling minrun targets and
 size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
 ablation.
@@ -40,6 +43,10 @@ summarized by their median.
 - `results/gate_e67f8ae_counts.csv` (276 rows), `_heldout_counts.csv` (84
   rows, fresh seeds 4--6, off-dyadic sigmas), `_times.csv` (20 rows),
   `_tables.md`, `_analysis.md`: the portfolio-gate study.
+- `results/duplaw_498b627_counts.csv` (120 rows, dyadic `dup2`--`dup1024`,
+  seeds 1--3) and `_heldout_counts.csv` (96 rows, off-dyadic
+  `dup6`--`dup768`, fresh seeds 4--6), `_tables.md`, `_analysis.md`: the
+  duplicate-cardinality response study, count-only at n=1m.
 - Every row has `ok=1` and the exact build ID of its commit.
 
 ### Robust result: `powersort_fj`
@@ -76,8 +83,14 @@ Validated at build `e67f8ae`:
   measured crossover sits in sigma (512, 768) bracketing the predicted
   ~700, and every off-dyadic held-out sigma routed correctly.
 - Known limitation: the conservative duplicate veto forfeits 0.139/elem on
-  `dup256`, where auto2048 *improves* (duplicate harm has an unmeasured
-  cardinality crossover in (16, 256); `dup16` still regresses +1.861).
+  `dup256`, where auto2048 *improves*. The `498b627` duplicate study
+  measured the cardinality crossover at K in (96, 128), seed-stable on both
+  grids: the veto is correct for K <= 96 but forfeits 0.030--0.140/elem for
+  every K >= 128 (21 of 54 strict-winner dup decisions wrong), and the
+  two-pair rule is only probabilistically closed above K ~= 700. The gate
+  still never loses to Powersort on any dup row. The analysis pre-registers
+  the replacement: count equal pairs over the full adjacent sample, veto
+  iff `equal_pairs * 112 >= adjacent`, to be validated on fresh seeds 7--9.
 - Probe accounting is exact: every gate row equals one standalone branch
   plus 33--5,903 comparisons; selftest (`gate_account`) enforces
   probe-plus-branch equality and byte-identical output on ten inputs.
@@ -88,9 +101,10 @@ Validated at build `e67f8ae`:
 ## Benchmark tooling
 
 `scripts/run_bench.py` supports `quick`, `milestone`, `gate`,
-`gate-heldout`, and `full` profiles, parallel count mode, strictly serial
-timing, exact build-ID injection, strict schema/identity/`ok` checks, and
-non-overwriting output. The `gate` profile covers the milestone
+`gate-heldout`, `duplaw`, `duplaw-heldout`, and `full` profiles, parallel
+count mode, strictly serial timing, exact build-ID injection, strict
+schema/identity/`ok` checks, and non-overwriting output. Distributions
+`dupK` (integer K in [2, 1e9]) and `dispX` are parsed generically. The `gate` profile covers the milestone
 distributions plus `dup256`, the dyadic `dispX` sweep, small-n fallback
 sizes, and a serial random-1m timing sample; `gate-heldout` runs fresh
 seeds 4--6 on random plus off-dyadic sigmas.
@@ -109,10 +123,11 @@ three gate CSVs, and `git diff --check`.
 
 ## Remaining directions
 
-1. Map the duplicate-cardinality response of large-FJ blocks (needs `dup4`
-   through `dup1024`-style generators) and replace the gate's
-   two-equal-pairs veto with a cardinality estimate at the measured
-   crossover.
+1. Stage 2 of the duplicate study: implement the pre-registered K=112
+   equality-count veto (see `results/duplaw_498b627_analysis.md`) and
+   validate it on fresh seeds 7--9 across the dup sweep plus a non-dup
+   safety grid; thresholds are already fixed, so no further tuning against
+   evaluation data is permitted.
 2. Replace FJ's quadratic chain/winner-position bookkeeping without
    changing its comparison decisions (speed only; PFJ is ~7%, auto2048
    ~82% slower than Powersort in the latest sample).
@@ -146,5 +161,7 @@ python3 scripts/aggregate.py results/prefixpair_de3837c_counts.csv \
 python3 scripts/aggregate.py results/displaw_1c32397_counts.csv
 python3 scripts/aggregate.py results/gate_e67f8ae_counts.csv \
   results/gate_e67f8ae_heldout_counts.csv results/gate_e67f8ae_times.csv
+python3 scripts/aggregate.py results/duplaw_498b627_counts.csv \
+  results/duplaw_498b627_heldout_counts.csv
 git diff --check
 ```
