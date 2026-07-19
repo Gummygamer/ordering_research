@@ -100,15 +100,30 @@ median. This is a sampled random-permutation frontier, not a general winner.
 Raw data and full tables are under `results/`; `results/README.md` distinguishes
 the current schema from seven legacy checkpoints.
 
-## 5. Next credible experiments
+## 5. Prefix-aware FJ follow-up (`de3837c`)
 
-1. Reuse the first-pair ordering established by `count_run` in the root FJ call.
-   Skipping exactly that repeated comparison should save one comparison per
-   selected block without changing later decisions.
-2. Prototype a comparator-counted statistical gate between PFJ and auto2048.
+Every selected FJ base block follows `count_run`, so its first pair is already
+known to be nondecreasing. A root-only entry point now skips that repeated
+comparison; recursive FJ and standalone `fjcounts` remain ordinary.
+
+Direct tests at sizes through 2047 verify identical output and exactly one
+saved comparison on unique, duplicate, and descending patterns. Repeating the
+full grid gives 335 improved rows, 313 ties, no regressions, and exact rowwise
+agreement in heap, stack bound, merge span, and `ok`.
+
+At random 1m, PFJ falls from 18.590897 to 18.580018 comparisons per element.
+It now saves 0.019021 versus Powersort and removes 17.3% of Powersort's
+finite-size excess. Auto2048 falls by exactly 512 comparisons per seed to
+18.520456/element, 0.031571 above the bound. Neither result is a speed
+improvement: new serial medians are 72.585/81.597/141.617 ns per element for
+Powersort/PFJ/auto2048.
+
+## 6. Remaining credible experiments
+
+1. Prototype a comparator-counted statistical gate between PFJ and auto2048.
    Treat it as distributional and fallible, never adversarially robust.
-3. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
+2. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
    without changing comparison count.
-4. Run `disp4` through `disp4096`, fit comparisons/element against `log2(X)`,
+3. Run `disp4` through `disp4096`, fit comparisons/element against `log2(X)`,
    and describe the result as an empirical disorder law rather than a proof of
    learning-augmented bounds.

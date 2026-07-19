@@ -1,5 +1,26 @@
 # Results inventory
 
+## Prefix-aware FJ follow-up (`de3837c`)
+
+- `prefixpair_de3837c_counts.csv`: 648-row count grid matching the `d310ed5`
+  milestone case for case.
+- `prefixpair_de3837c_times.csv`: 15 strictly serial timing rows.
+- `prefixpair_de3837c_tables.md`: strict aggregation of the two new CSV files.
+- `prefixpair_de3837c_analysis.md`: rowwise comparison with the `d310ed5`
+  baseline and the bounded claim supported by it.
+
+All 663 new rows have `ok=1` and `build_id=de3837c`. The rowwise comparison
+found no identity or non-comparison-metric mismatch, no comparison regression,
+335 improved rows, and 313 ties. The direct selftest separately verifies an
+identical result and exactly one saved comparison for each of 39 tested
+known-pair FJ calls.
+
+```sh
+python3 scripts/aggregate.py \
+  results/prefixpair_de3837c_counts.csv \
+  results/prefixpair_de3837c_times.csv
+```
+
 ## Validated `d310ed5` milestone
 
 - `milestone_d310ed5_counts.csv`: 648 count rows, covering 8 algorithms,

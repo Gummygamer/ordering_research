@@ -7,15 +7,16 @@ comparisons without giving up adaptivity. The harness records exact comparator
 calls, elapsed time, peak auxiliary heap allocation, a separate conservative
 Ford--Johnson stack bound, and merge span.
 
-The validated `d310ed5` milestone is a comparison-count result, not a new
-asymptotic sorting result or a speed result. Across a 648-row count grid,
+The validated result is a comparison-count improvement, not a new asymptotic
+sorting result or a speed result. Across a 648-row count grid,
 `powersort_fj` never used more comparisons than exact Powersort in any of 81
-matched distribution/size/seed cases. On random permutations of one million
-elements it averaged 18.590897 comparisons per element, saving 0.008142 over
-Powersort. The more aggressive `hybrid_fjauto2048` averaged 18.520968, only
-0.032083 above `lg(n!)/n = 18.488885`, but it is almost twice as slow here and
-often regresses badly on structured inputs. It is a sampled random-input
-frontier, not the robust recommendation.
+matched distribution/size/seed cases. After commit `de3837c` reused the first
+pair ordering already established by run detection, it averaged 18.580018
+comparisons per element on random permutations of one million elements, saving
+0.019021 over Powersort. The more aggressive `hybrid_fjauto2048` averaged
+18.520456, only 0.031571 above `lg(n!)/n = 18.488885`, but it remains almost
+twice as slow and often regresses badly on structured inputs. It is a sampled
+random-input frontier, not the robust recommendation.
 
 ## Build and run
 
@@ -57,7 +58,8 @@ explicit build ID only when it truthfully identifies the compiled source. The
 committed `d310ed5` validation was split into
 `results/milestone_d310ed5_counts.csv` and
 `results/milestone_d310ed5_times.csv`; the combined generated tables are in
-`results/milestone_d310ed5_tables.md`.
+`results/milestone_d310ed5_tables.md`. The prefix-aware follow-up is recorded
+in the corresponding `results/prefixpair_de3837c_*` files.
 
 The benchmark interface is:
 
@@ -111,10 +113,11 @@ The actual output is one physical CSV line; it is wrapped above for readability.
   exact count of assignments or bytes moved.
 - `ok=1` means the result exactly matched a `std::sort` reference vector.
 
-The two `milestone_d310ed5_*.csv` files use this schema. The seven older tracked
-CSV files are explicitly legacy: five are headerless 11-column benchmark
-checkpoints and two are 7-column FJ profiles. See `results/README.md`; the
-aggregator intentionally rejects those legacy formats.
+The `milestone_d310ed5_*.csv` and `prefixpair_de3837c_*.csv` files use this
+schema. The seven older tracked CSV files are explicitly legacy: five are
+headerless 11-column benchmark checkpoints and two are 7-column FJ profiles.
+See `results/README.md`; the aggregator intentionally rejects those legacy
+formats.
 
 ## Algorithms
 
@@ -135,13 +138,16 @@ The run-merging family is the focus:
 - `powersort_fj` keeps `powersort`'s generated run targets and merge policy. It
   uses Ford--Johnson only when the detected sorted prefix is too short to make
   binary insertion cheaper; otherwise it preserves and extends that prefix.
+  When FJ is selected, it reuses the already-known order of the prefix's first
+  pair instead of comparing that pair again.
 - `hybrid_fjN` forces fixed blocks of size `N` through Ford--Johnson before
   Powersort merging. Registered sizes are 8, 12, 16, 21, 32, 42, 56, 62, 64,
   85, 123, and 128. `hybrid_fja62` is the prefix-salvaging size-62 ablation.
 - `hybrid_fjauto` uses floor/ceiling blocks capped at 128;
   `hybrid_fjauto256`, `512`, `1024`, and `2048` raise that cap. The generator
   creates a power-of-two number of nearly equal blocks on all-short-run input,
-  avoiding a short tail and fixed-block merge-tree rounding loss.
+  avoiding a short tail and fixed-block merge-tree rounding loss. Selected FJ
+  blocks likewise reuse the detected first pair.
 - `hybrid_bin21`, `32`, `62`, and `123` substitute stable binary insertion at
   the same fixed block sizes, isolating the Ford--Johnson contribution.
 
@@ -152,7 +158,7 @@ Ford--Johnson variants, including `powersort_fj`, are **unstable**. `powersort`,
 
 ## Milestones
 
-### 1. A conservative comparison improvement for Powersort
+### 1. A conservative comparison improvement for Powersort (`d310ed5`)
 
 Run detection usually establishes at least one ordered pair even on random
 input. `powersort_fj` chooses its base sorter after that detection: it keeps
@@ -228,6 +234,33 @@ are used here:
 The present FJ implementation optimizes comparator calls, not movement or cache
 behavior. Count-mode `time_ns` is instrumented overhead and was never used as a
 speed measurement.
+
+### 4. Reusing the run detector's first pair
+
+Commit `de3837c` removes one redundant comparison from every selected FJ base
+block. A dedicated selftest covers unique, duplicate, and descending inputs at
+39 pattern/size combinations through block 2047; the ordinary and known-pair
+paths produced identical output and differed by exactly one comparison.
+
+The full milestone count grid was then repeated case for case. Relative to
+`d310ed5`, all 648 identities aligned; heap peaks, FJ stack bounds, merge spans,
+`ok`, and knobs were unchanged. There were no comparison regressions:
+335 rows improved and 313 tied. Powersort and `powersort_fixed` tied exactly in
+all 162 baseline rows.
+
+At random `n=1,000,000`, the change saves PFJ another 0.010879 comparisons per
+element (10,839--10,901 selected blocks per seed), bringing PFJ's total saving
+over Powersort to 0.019021. The auto-cap improvements taper with block count:
+0.007518/0.004032/0.002041/0.001023/0.000512 comparisons per element for caps
+128/256/512/1024/2048. Auto2048's excess falls to 0.031571 and Powersort-excess
+reduction rises to 71.3%.
+
+The PFJ robustness classification remains 0 regressions, 60 ties, and 21
+improvements across 81 cases; auto2048's non-random classification remains
+54 regressions, 9 ties, and 9 improvements. New serial medians were
+72.585/81.597/141.617 ns per element for Powersort/PFJ/auto2048. The skipped
+comparisons are too sparse to claim a speed improvement. Full details are in
+`results/prefixpair_de3837c_analysis.md`.
 
 ## Interpretation and caveats
 
