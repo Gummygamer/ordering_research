@@ -105,6 +105,13 @@ class Case:
     reps: int
 
 
+GATE_ALGORITHMS = (
+    "powersort",
+    "powersort_fj",
+    "hybrid_fjauto2048",
+    "hybrid_gate",
+)
+
 PROFILES = {
     "quick": Profile(
         grids=(
@@ -169,6 +176,93 @@ PROFILES = {
         ),
         count_seeds=(1, 2, 3),
         time_seeds=(1,),
+    ),
+    # Portfolio-gate study: the gate, its two branches, and the Powersort
+    # reference on the milestone distributions plus dup256, the dyadic dispX
+    # sweep, the small-n fallback sizes, and a serial random-1m timing sample.
+    "gate": Profile(
+        grids=(
+            Grid(
+                GATE_ALGORITHMS,
+                (
+                    "random",
+                    "dup16",
+                    "dup256",
+                    "runs32",
+                    "runs1024",
+                    "nearly1",
+                    "tail10",
+                    "saw13",
+                    "organpipe",
+                    "disp256",
+                ),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+            Grid(
+                GATE_ALGORITHMS,
+                (
+                    "disp4",
+                    "disp8",
+                    "disp16",
+                    "disp32",
+                    "disp64",
+                    "disp128",
+                    "disp512",
+                    "disp1024",
+                    "disp2048",
+                    "disp4096",
+                ),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+            Grid(
+                GATE_ALGORITHMS,
+                ("random",),
+                (10_000, 100_000, 262_144),
+                5,
+                count=True,
+                time=False,
+            ),
+            Grid(
+                GATE_ALGORITHMS,
+                ("random",),
+                (1_000_000,),
+                5,
+                count=False,
+                time=True,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
+    # Held-out generalization for the gate: fresh seeds and off-dyadic sigmas
+    # that the design thresholds never saw.
+    "gate-heldout": Profile(
+        grids=(
+            Grid(
+                GATE_ALGORITHMS,
+                (
+                    "random",
+                    "disp96",
+                    "disp192",
+                    "disp384",
+                    "disp768",
+                    "disp1536",
+                    "disp3072",
+                ),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+        ),
+        count_seeds=(4, 5, 6),
+        time_seeds=(4,),
     ),
     "full": Profile(
         grids=(

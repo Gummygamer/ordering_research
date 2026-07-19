@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <random>
 #include <type_traits>
 #include <vector>
 
@@ -748,6 +749,72 @@ void hybrid_fj_auto_capped(T* a, size_t n, C cmp) {
 template <class T, class C>
 void hybrid_fj_auto(T* a, size_t n, C cmp) {
     hybrid_fj_auto_capped<128>(a, n, cmp);
+}
+
+// ---------------------------------------------------------------------------
+// sampled portfolio gate: powersort_fj vs. hybrid_fj_auto_capped<2048>
+// ---------------------------------------------------------------------------
+
+// Telemetry for selftest accounting; the benchmark CSV schema is unchanged.
+extern uint64_t g_gate_probe_comps;  // comparator calls spent probing
+extern int g_gate_choice;            // 0 small-n PFJ, 1 vetoed PFJ, 2 auto2048
+
+// The displacement grid (results/displaw_1c32397_analysis.md) gave sharp
+// sampled crossovers: auto2048 wins random permutations and disp>=1024 by up
+// to ~0.09 comparisons/element but loses up to ~6.6 on structured inputs,
+// while PFJ never lost to Powersort. With stakes that asymmetric the gate
+// probes through the counted comparator and selects auto2048 only when every
+// disorder test passes; any veto falls back to PFJ. The tests: a
+// two-equal-pairs veto (duplicates break large FJ), an adjacent-descent
+// window (natural runs and near-sortedness), and inversion fractions at
+// dyadic distances 64/256/1024. Thresholds come from the dispX noise model
+// P(inversion at distance d) ~= Phi(-d/(sqrt(2)*sigma)) fitted to the
+// seeds-1..3 crossover labels; the deep-disorder rule accepts sigma >= ~700
+// and random permutations with >=3-sigma sampling margins. Probe indices use
+// a fixed-seed generator, so the gate is a deterministic function of the
+// input. This is a distributional portfolio heuristic, not an adversarial
+// guarantee, and both branches are unstable.
+template <class T, class C>
+void hybrid_gate(T* a, size_t n, C cmp) {
+    constexpr size_t GATE_MIN_N = 131072;  // below: probes cost too much of n
+    g_gate_probe_comps = 0;
+    if (n < GATE_MIN_N) {
+        g_gate_choice = 0;
+        powersort_fj(a, n, cmp);
+        return;
+    }
+    std::mt19937_64 rng(0x6A7E5EEDULL);
+    const size_t adjacent = std::min<size_t>(2048, n / 512);
+    const size_t per_distance = std::min<size_t>(1024, n / 1024);
+    size_t descents = 0, equal_pairs = 0;
+    bool deep = true;
+    for (size_t t = 0; t < adjacent; ++t) {
+        size_t i = (size_t)(rng() % (n - 1));
+        ++g_gate_probe_comps;
+        if (cmp(a[i + 1], a[i])) { ++descents; continue; }
+        ++g_gate_probe_comps;
+        if (!cmp(a[i], a[i + 1]) && ++equal_pairs >= 2) { deep = false; break; }
+    }
+    deep = deep && descents * 10 >= adjacent * 3 && descents * 10 <= adjacent * 7;
+    constexpr size_t distances[3] = {64, 256, 1024};
+    constexpr size_t inv_min_permille[3] = {350, 300, 150};
+    for (int k = 0; deep && k < 3; ++k) {
+        const size_t d = distances[k];
+        size_t inversions = 0;
+        for (size_t t = 0; t < per_distance; ++t) {
+            size_t i = (size_t)(rng() % (n - d));
+            ++g_gate_probe_comps;
+            if (cmp(a[i + d], a[i])) ++inversions;
+        }
+        deep = inversions * 1000 >= inv_min_permille[k] * per_distance;
+    }
+    if (deep) {
+        g_gate_choice = 2;
+        hybrid_fj_auto_capped<2048>(a, n, cmp);
+    } else {
+        g_gate_choice = 1;
+        powersort_fj(a, n, cmp);
+    }
 }
 
 // ---------------------------------------------------------------------------

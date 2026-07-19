@@ -22,6 +22,8 @@ size_t lab::g_small_merge = 96;
 size_t lab::g_fj_run_thresh = 0;
 size_t lab::g_fj_largest_block = 0;
 size_t lab::g_fj_scratch_cap = 0;
+uint64_t lab::g_gate_probe_comps = 0;
+int lab::g_gate_choice = 0;
 
 // ---------------------------------------------------------------------------
 // auxiliary-memory tracking: every heap allocation in the process goes
@@ -132,7 +134,7 @@ enum Algo {
     A_HFJ8, A_HFJ12, A_HFJ16, A_HFJ21, A_HFJ32, A_HFJ42,
     A_HFJ56, A_HFJ62, A_HFJ64, A_HFJA62,
     A_HFJ85, A_HFJ123, A_HFJ128, A_HFJAUTO, A_HFJAUTO256, A_HFJAUTO512,
-    A_HFJAUTO1024, A_HFJAUTO2048,
+    A_HFJAUTO1024, A_HFJAUTO2048, A_HGATE,
     A_HBIN21, A_HBIN32, A_HBIN62, A_HBIN123,
     A_RADIX,
 };
@@ -167,6 +169,7 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_fjauto512", A_HFJAUTO512, false, true},
     {"hybrid_fjauto1024", A_HFJAUTO1024, false, true},
     {"hybrid_fjauto2048", A_HFJAUTO2048, false, true},
+    {"hybrid_gate",  A_HGATE,     false, true},
     {"hybrid_bin21", A_HBIN21,    true,  true},
     {"hybrid_bin32", A_HBIN32,    true,  true},
     {"hybrid_bin62", A_HBIN62,    true,  true},
@@ -211,6 +214,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_HFJAUTO512: lab::hybrid_fj_auto_capped<512>(a, n, cmp); break;
         case A_HFJAUTO1024: lab::hybrid_fj_auto_capped<1024>(a, n, cmp); break;
         case A_HFJAUTO2048: lab::hybrid_fj_auto_capped<2048>(a, n, cmp); break;
+        case A_HGATE:      lab::hybrid_gate(a, n, cmp); break;
         case A_HBIN21:     lab::hybrid_bin<21>(a, n, cmp); break;
         case A_HBIN32:     lab::hybrid_bin<32>(a, n, cmp); break;
         case A_HBIN62:     lab::hybrid_bin<62>(a, n, cmp); break;
@@ -321,6 +325,60 @@ static bool selftest() {
             check(descending);
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "fj_known_pair",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+
+    // The gate must cost exactly its probe comparisons plus one of its two
+    // portfolio branches run standalone on the same input, produce that
+    // branch's exact output, and take the intended branch on characteristic
+    // inputs. Choices are deterministic: probe indices come from a fixed-seed
+    // generator. dup256-scale duplication is deliberately absent here; near
+    // the two-equal-pairs sensitivity floor the veto is probabilistic across
+    // generator seeds, which the benchmark grid reports instead.
+    {
+        struct GateCase { const char* dist; size_t n; int expect_choice; };
+        const GateCase gate_cases[] = {
+            {"random", 200000, 2},   {"disp2048", 200000, 2},
+            {"disp64", 200000, 1},   {"dup16", 200000, 1},
+            {"runs1024", 200000, 1}, {"nearly1", 200000, 1},
+            {"sorted", 200000, 1},   {"reversed", 200000, 1},
+            {"equal", 200000, 1},    {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const GateCase& gc : gate_cases) {
+            std::vector<u64> input = gen_dist(gc.dist, gc.n, 7);
+            std::vector<u64> gate_work = input;
+            lab::g_comps = 0;
+            lab::hybrid_gate(gate_work.data(), gc.n,
+                             lab::Counting<lab::RawLess>{});
+            u64 gate_comps = lab::g_comps;
+            u64 probe_comps = lab::g_gate_probe_comps;
+            int choice = lab::g_gate_choice;
+            std::vector<u64> branch_work = input;
+            lab::g_comps = 0;
+            if (choice == 2)
+                lab::hybrid_fj_auto_capped<2048>(branch_work.data(), gc.n,
+                                                 lab::Counting<lab::RawLess>{});
+            else
+                lab::powersort_fj(branch_work.data(), gc.n,
+                                  lab::Counting<lab::RawLess>{});
+            u64 branch_comps = lab::g_comps;
+            ++checks;
+            if (choice != gc.expect_choice || gate_work != branch_work ||
+                gate_comps != probe_comps + branch_comps ||
+                (choice == 0 && probe_comps != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                                 "  FAIL gate d=%s n=%zu choice=%d expect=%d "
+                                 "gate=%" PRIu64 " probe=%" PRIu64
+                                 " branch=%" PRIu64 "\n",
+                                 gc.dist, gc.n, choice, gc.expect_choice,
+                                 gate_comps, probe_comps, branch_comps);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "gate_account",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }
