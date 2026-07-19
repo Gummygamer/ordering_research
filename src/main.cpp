@@ -339,14 +339,16 @@ static bool selftest() {
     // portfolio branches run standalone on the same input, produce that
     // branch's exact output, and take the intended branch on characteristic
     // inputs. Choices are deterministic: probe indices come from a fixed-seed
-    // generator. dup256-scale duplication is deliberately absent here; near
-    // the two-equal-pairs sensitivity floor the veto is probabilistic across
-    // generator seeds, which the benchmark grid reports instead.
+    // generator. Cardinalities near the K=112 duplicate-veto boundary are
+    // deliberately absent here; there the veto is probabilistic across
+    // generator seeds, which the benchmark grid reports instead. dup16 sits
+    // far below the boundary and dup2048 far above it.
     {
         struct GateCase { const char* dist; size_t n; int expect_choice; };
         const GateCase gate_cases[] = {
             {"random", 200000, 2},   {"disp2048", 200000, 2},
             {"disp64", 200000, 1},   {"dup16", 200000, 1},
+            {"dup2048", 200000, 2},
             {"runs1024", 200000, 1}, {"nearly1", 200000, 1},
             {"sorted", 200000, 1},   {"reversed", 200000, 1},
             {"equal", 200000, 1},    {"random", 1000, 0},

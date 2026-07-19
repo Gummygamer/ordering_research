@@ -764,10 +764,13 @@ extern int g_gate_choice;            // 0 small-n PFJ, 1 vetoed PFJ, 2 auto2048
 // to ~0.09 comparisons/element but loses up to ~6.6 on structured inputs,
 // while PFJ never lost to Powersort. With stakes that asymmetric the gate
 // probes through the counted comparator and selects auto2048 only when every
-// disorder test passes; any veto falls back to PFJ. The tests: a
-// two-equal-pairs veto (duplicates break large FJ), an adjacent-descent
-// window (natural runs and near-sortedness), and inversion fractions at
-// dyadic distances 64/256/1024. Thresholds come from the dispX noise model
+// disorder test passes; any veto falls back to PFJ. The tests: a duplicate
+// veto that counts equal pairs over the full adjacent sample and fires iff
+// equal_pairs * 112 >= adjacent — a cardinality estimate at boundary K=112,
+// pre-registered in results/duplaw_498b627_analysis.md from the measured
+// auto2048/PFJ crossover K in (96, 128); an adjacent-descent window (natural
+// runs and near-sortedness); and inversion fractions at dyadic distances
+// 64/256/1024. Displacement thresholds come from the dispX noise model
 // P(inversion at distance d) ~= Phi(-d/(sqrt(2)*sigma)) fitted to the
 // seeds-1..3 crossover labels; the deep-disorder rule accepts sigma >= ~700
 // and random permutations with >=3-sigma sampling margins. Probe indices use
@@ -786,15 +789,16 @@ void hybrid_gate(T* a, size_t n, C cmp) {
     std::mt19937_64 rng(0x6A7E5EEDULL);
     const size_t adjacent = std::min<size_t>(2048, n / 512);
     const size_t per_distance = std::min<size_t>(1024, n / 1024);
+    constexpr size_t DUP_VETO_K = 112;  // veto iff K-hat <= 112; see above
     size_t descents = 0, equal_pairs = 0;
-    bool deep = true;
     for (size_t t = 0; t < adjacent; ++t) {
         size_t i = (size_t)(rng() % (n - 1));
         ++g_gate_probe_comps;
         if (cmp(a[i + 1], a[i])) { ++descents; continue; }
         ++g_gate_probe_comps;
-        if (!cmp(a[i], a[i + 1]) && ++equal_pairs >= 2) { deep = false; break; }
+        if (!cmp(a[i], a[i + 1])) ++equal_pairs;
     }
+    bool deep = equal_pairs * DUP_VETO_K < adjacent;
     deep = deep && descents * 10 >= adjacent * 3 && descents * 10 <= adjacent * 7;
     constexpr size_t distances[3] = {64, 256, 1024};
     constexpr size_t inv_min_permille[3] = {350, 300, 150};
