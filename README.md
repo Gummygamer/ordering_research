@@ -19,12 +19,16 @@ twice as slow and often regresses badly on structured inputs. It is a sampled
 random-input frontier, not the robust recommendation. `hybrid_gate` bridges
 the two by probing the input through the counted comparator: on the same
 random inputs it reaches 18.526328 including probe cost, while its worst
-observed regression against Powersort on any tested distribution is +0.0058
-comparisons per element. A dedicated cardinality sweep (`498b627`) located
-the point where duplicates stop hurting the aggressive branch: auto2048
-loses to `powersort_fj` for up to 96 distinct values but wins from 128
-upward, so the gate's conservative duplicate veto forfeits at most
-0.140/elem on high-cardinality duplicate inputs.
+observed regression against Powersort on any non-duplicate distribution is
++0.0058 comparisons per element. A dedicated cardinality sweep (`498b627`)
+located the point where duplicates stop hurting the aggressive branch —
+auto2048 loses to `powersort_fj` for up to 96 distinct values but wins from
+128 upward — and the gate's duplicate veto is now a pre-registered
+cardinality estimate at K=112 (`97869f3`) that picks the strictly better
+branch in 51 of 54 fresh-seed duplicate decisions. The estimate is soft
+near its boundary by design: the worst measured duplicate-input regression
+against Powersort is +0.165/elem at 96 distinct values, bounded by the
+local gap between the two branches.
 
 ## Build and run
 

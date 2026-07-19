@@ -180,13 +180,31 @@ iff `equal_pairs * 112 >= adjacent` (boundary K = 112, soft by design in
 the (96, 128) bracket where the branch gap is ≤ ±0.18; gross-error rates
 ≤ 0.005 at K ≤ 64 and ≤ 0.016 at K ≥ 192), evaluated on fresh seeds 7--9.
 
-## 9. Remaining credible experiments
+## 9. K=112 duplicate-veto evaluation (`97869f3`)
 
-1. Stage 2 of the duplicate study: implement the pre-registered K=112
-   equality-count veto (section 8) and validate it on fresh seeds 7--9
-   across the dup sweep plus a non-dup safety grid.
-2. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
+The pre-registered veto (section 8) landed unchanged: equal pairs counted
+over the full adjacent sample, veto iff `equal_pairs * 112 >= adjacent`.
+The safety grid (full gate count profile, seeds 1--3) reproduced 270 of
+276 rows byte-identically against `e67f8ae`; the six changed rows are
+exactly the intended `dup16` (+0.0029/elem, completed scan) and `dup256`
+(−0.133 to −0.135/elem, now accepted) gate cells, so random/disp/runs and
+all reference rows are untouched by measurement, not just by argument. On
+never-before-used seeds 7--9 across all 18 cardinalities the rule picked
+the strict winner 51 of 54 times (old rule: 33), vetoing every K ≤ 64 and
+accepting every K ≥ 192, cutting mean sweep regret from 0.0312 to
+0.0113/elem. The priced cost materialized as predicted: `dup96` was
+accepted at 2 of 3 seeds (model rate 27%), so the gate's worst measured
+regression vs Powersort moved from +0.005839 (pure probe) to
++0.164960/elem, bounded by the local branch gap and confined to K near
+the bracket; on non-duplicate inputs the probe-bounded +0.0058 story is
+unchanged. Probe accounting stayed exact (2,917--5,904 comparisons on the
+dup grids) and `gate_account` now covers eleven inputs including a
+dup2048 acceptance.
+
+## 10. Remaining credible experiments
+
+1. Replace FJ's quadratic chain/winner-position bookkeeping to address speed
    without changing comparison count.
-3. Optionally extend the gate toward a multi-cap ladder (128--1024) using the
+2. Optionally extend the gate toward a multi-cap ladder (128--1024) using the
    section-6 winners, and toward smaller n with rescaled probe budgets; both
    need fresh held-out validation.

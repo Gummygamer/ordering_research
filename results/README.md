@@ -1,5 +1,29 @@
 # Results inventory
 
+## K=112 duplicate-veto evaluation (`97869f3`)
+
+- `dupveto_97869f3_counts.csv`: 216 count rows = the four gate-study
+  algorithms over all 18 `dupK` cardinalities (`dup2`--`dup1024`, dyadic
+  and off-dyadic) × never-before-used seeds 7--9 at n=1m.
+- `dupveto_97869f3_gate_counts.csv`: 276 count rows = the full `gate`
+  count profile at seeds 1--3 as a safety and identity grid; 270 rows are
+  byte-identical to `gate_e67f8ae_counts.csv`, and the six changed rows
+  are exactly the `hybrid_gate` × `dup16`/`dup256` cells the K=112 veto
+  was built to change.
+- `dupveto_97869f3_tables.md`: strict aggregation of both CSV files.
+- `dupveto_97869f3_analysis.md`: safety diff, fresh-seed branch decisions
+  (51/54 strict winners), regret accounting, and the honest worst-case
+  shift to +0.164960/elem at `dup96`.
+
+Every row has the current 16-column schema, `ok=1`, and `build_id=97869f3`.
+The study contains no timing rows; count-mode `time_ns` is not speed data.
+
+```sh
+python3 scripts/aggregate.py results/dupveto_97869f3_counts.csv \
+  results/dupveto_97869f3_gate_counts.csv \
+  --title 'K=112 duplicate-veto evaluation (97869f3)'
+```
+
 ## Duplicate-cardinality response study (`498b627`)
 
 - `duplaw_498b627_counts.csv`: 120 count rows = `powersort`, `powersort_fj`,
