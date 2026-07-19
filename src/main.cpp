@@ -81,12 +81,18 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
     if (d == "random") {                       // random permutation of 0..n-1
         for (size_t i = 0; i < n; ++i) v[i] = i;
         std::shuffle(v.begin(), v.end(), rng);
-    } else if (d == "dup2") {
-        for (size_t i = 0; i < n; ++i) v[i] = rng() & 1;
-    } else if (d == "dup16") {
-        for (size_t i = 0; i < n; ++i) v[i] = rng() & 15;
-    } else if (d == "dup256") {
-        for (size_t i = 0; i < n; ++i) v[i] = rng() & 255;
+    } else if (d.rfind("dup", 0) == 0) {   // K distinct values via rng() % K
+        // For dyadic K this is bit-identical to the former rng() & (K-1)
+        // masks, so committed dup2/dup16/dup256 rows reproduce exactly; the
+        // modulo bias for other K is <= K/2^64.
+        char* end = nullptr;
+        unsigned long long k = std::strtoull(d.c_str() + 3, &end, 10);
+        if (end == d.c_str() + 3 || *end != '\0' || k < 2 ||
+            k > 1000000000ull) {
+            std::fprintf(stderr, "unknown dist %s\n", d.c_str());
+            std::exit(2);
+        }
+        for (size_t i = 0; i < n; ++i) v[i] = rng() % k;
     } else if (d == "equal") {
         for (size_t i = 0; i < n; ++i) v[i] = 42;
     } else if (d == "sorted") {
@@ -227,8 +233,8 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
 // selftest
 // ---------------------------------------------------------------------------
 static bool selftest() {
-    const char* dists[] = {"random", "dup2", "dup16", "equal", "sorted",
-                           "reversed", "runs32", "nearly1", "saw13",
+    const char* dists[] = {"random", "dup2", "dup6", "dup16", "equal",
+                           "sorted", "reversed", "runs32", "nearly1", "saw13",
                            "organpipe", "disp16", "tail10"};
     size_t sizes[] = {0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 21, 24, 25, 63, 64,
                       65, 100, 127, 257, 1000, 2500};

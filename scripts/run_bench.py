@@ -63,9 +63,6 @@ INTEGER_FIELDS = (
 
 KNOWN_DISTS = {
     "random",
-    "dup2",
-    "dup16",
-    "dup256",
     "equal",
     "sorted",
     "reversed",
@@ -264,6 +261,59 @@ PROFILES = {
         count_seeds=(4, 5, 6),
         time_seeds=(4,),
     ),
+    # Duplicate-cardinality response of large-FJ blocks: the gate portfolio
+    # across a dyadic dupK sweep at n=1m, anchored by dup16/dup256 identities
+    # shared with the committed gate grid.
+    "duplaw": Profile(
+        grids=(
+            Grid(
+                GATE_ALGORITHMS,
+                (
+                    "dup2",
+                    "dup4",
+                    "dup8",
+                    "dup16",
+                    "dup32",
+                    "dup64",
+                    "dup128",
+                    "dup256",
+                    "dup512",
+                    "dup1024",
+                ),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
+    # Held-out generalization for the duplicate-cardinality study: fresh
+    # seeds on off-dyadic cardinalities no design constant will have seen.
+    "duplaw-heldout": Profile(
+        grids=(
+            Grid(
+                GATE_ALGORITHMS,
+                (
+                    "dup6",
+                    "dup12",
+                    "dup24",
+                    "dup48",
+                    "dup96",
+                    "dup192",
+                    "dup384",
+                    "dup768",
+                ),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+        ),
+        count_seeds=(4, 5, 6),
+        time_seeds=(4,),
+    ),
     "full": Profile(
         grids=(
             # algorithms=None means every algorithm reported by `sortlab list`.
@@ -353,6 +403,12 @@ def seed_list(text: str) -> tuple[int, ...]:
 def valid_distribution(name: str) -> bool:
     if name in KNOWN_DISTS:
         return True
+    if name.startswith("dup"):
+        # Mirrors the sortlab parser: dupK draws rng() % K for integer
+        # K in [2, 1e9]; dyadic K reproduces the former mask generators.
+        if not re.fullmatch(r"[0-9]+", name[3:]):
+            return False
+        return 2 <= int(name[3:], 10) <= 1_000_000_000
     if not name.startswith("disp") or len(name) == 4:
         return False
     try:
