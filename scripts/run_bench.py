@@ -110,6 +110,30 @@ GATE_ALGORITHMS = (
 )
 
 PROFILES = {
+    # Initial practical evaluation of directional mergesort++ from Jin and Xu
+    # (arXiv:2608.10421), against a static merge baseline and adaptive
+    # Powersort on random, ordered, and run-structured inputs.
+    "directional": Profile(
+        grids=(
+            Grid(
+                ("directional_mergesort", "merge_td", "powersort"),
+                (
+                    "random",
+                    "dup16",
+                    "runs32",
+                    "runs1024",
+                    "nearly1",
+                    "sorted",
+                    "reversed",
+                    "organpipe",
+                ),
+                (1_000_000,),
+                5,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
     # Focused implementation study for the few-moves Pingpong Powersort from
     # Moltmann, Nakajima, and Wild (ESA 2026). Structured and random 1m inputs
     # expose the trade-off against this lab's galloping copy-based baseline.

@@ -1103,6 +1103,76 @@ void merge_td(T* a, size_t n, C cmp) {
     merge_td_rec(a, 0, n, buf.get(), cmp);
 }
 
+// Directional Mergesort++ (Jin and Xu, 2026): a fixed balanced merge tree
+// propagates whether each child is wholly ascending or strictly descending.
+// Skip checks retain natural runs; backward/forward half-buffered merges are
+// selected to exhaust a pure child as early as possible. The recursion uses
+// O(log n) stack words; the paper's separate bit-stack traversal reduces this
+// to O(1), which is outside this implementation.
+template <class T, class C>
+void directional_mergesort(T* a, size_t n, C cmp) {
+    if (n < 2) return;
+    std::unique_ptr<T[]> buf(new T[(n + 1) / 2]);
+    struct Purity { bool ascending, descending; };
+
+    auto merge_forward = [&](size_t lo, size_t mid, size_t hi) {
+        const size_t left_len = mid - lo;
+        std::memcpy(buf.get(), a + lo, left_len * sizeof(T));
+        size_t i = 0, j = mid, out = lo;
+        while (i < left_len && j < hi) {
+            if (cmp(a[j], buf[i])) a[out++] = a[j++];
+            else                   a[out++] = buf[i++];
+        }
+        if (i < left_len)
+            std::memcpy(a + out, buf.get() + i, (left_len - i) * sizeof(T));
+        g_merge_cost += hi - lo;
+    };
+    auto merge_backward = [&](size_t lo, size_t mid, size_t hi) {
+        const size_t right_len = hi - mid;
+        std::memcpy(buf.get(), a + mid, right_len * sizeof(T));
+        size_t i = mid, j = right_len, out = hi;
+        while (i > lo && j > 0) {
+            // On equality take from the right so the left equal element
+            // remains earlier in the final stable order.
+            if (!cmp(buf[j - 1], a[i - 1])) a[--out] = buf[--j];
+            else                            a[--out] = a[--i];
+        }
+        if (j > 0) std::memcpy(a + lo, buf.get(), j * sizeof(T));
+        g_merge_cost += hi - lo;
+    };
+
+    auto sort_rec = [&](auto&& self, size_t lo, size_t hi) -> Purity {
+        const size_t len = hi - lo;
+        if (len == 1) return {true, true};
+        if (len == 2) {
+            if (cmp(a[lo + 1], a[lo])) return {false, true};
+            return {true, false};
+        }
+        const size_t mid = lo + len / 2;
+        Purity left = self(self, lo, mid);
+        Purity right = self(self, mid, hi);
+
+        if (left.descending && right.descending && cmp(a[mid], a[mid - 1]))
+            return {false, true};
+
+        if (left.descending) std::reverse(a + lo, a + mid);
+        if (right.descending) std::reverse(a + mid, a + hi);
+
+        if (!(left.descending && right.descending) &&
+            !cmp(a[mid], a[mid - 1]))
+            return {left.ascending && right.ascending, false};
+
+        if (right.ascending || !(right.descending || left.ascending))
+            merge_backward(lo, mid, hi);
+        else
+            merge_forward(lo, mid, hi);
+        return {false, false};
+    };
+
+    Purity result = sort_rec(sort_rec, 0, n);
+    if (result.descending) std::reverse(a, a + n);
+}
+
 // ---------------------------------------------------------------------------
 // LSD radix sort (u64; non-comparison speed reference)
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Research notes — comparison sorting and adaptive merging
 
-Updated 2026-07-19. These notes separate published guarantees from this
+Updated 2026-09-23. These notes separate published guarantees from this
 project's generated-input measurements.
 
 ## 1. Powersort and current CPython engineering
@@ -230,3 +230,15 @@ At $n=10^6$, mean count-mode comparisons per element over seeds 1--3 were:
 These large differences on duplicate and nearly-sorted data come from omitting the baseline's trim/galloping merge path. They are comparison counts, not runtime measurements. Across five serial timing repetitions at seed 1, median nanoseconds per element (Pingpong / Powersort) were 78.712 / 80.101 on random, 38.434 / 40.337 on `dup16`, 36.591 / 38.378 on `runs1024`, 13.556 / 10.342 on `nearly1`, and 0.812 / 0.689 on sorted. This run sample was faster on random, duplicates, and `runs1024`, and slower on the two highly ordered cases; it is one machine/build/input sample, not a general speed claim.
 
 Peak tracked auxiliary heap was 8,002,304 bytes for Pingpong versus 4,002,288 bytes for Powersort on random 1m. This confirms the expected full-size-buffer cost in this harness; Pingpong is a data-movement study, not an almost-in-place implementation. A paper-specific follow-up is a comparator-generic implementation of the virtual-page scheme, whose buffer lifetime and final permutation logic need separate high-coverage validation before making any low-memory claim.
+
+## 12. Directional Mergesort++ (2026-09-23)
+
+Bill Jin and Alex Z. Xu, [Straightforward Entropy-Sensitive Mergesort](https://arxiv.org/abs/2608.10421), submitted 2026-08-11. The paper proposes a balanced, static merge tree whose recursive nodes detect already ordered halves and choose a forward or backward half-buffered merge based on child purity. Its Directional Mergesort++ variant also recognizes strictly decreasing runs. The paper states an upper bound of $nH+3n-r$ comparisons for run entropy $H$; its conclusion explicitly leaves empirical performance comparisons against production sorts as future work.
+
+`directional_mergesort` implements the decreasing-run-aware recursive algorithm (the paper's Algorithm 2): two-element leaves classify ascending versus strictly descending, descending subruns are deferred-reversed, ordered halves skip merging, and the direction-aware stable merge uses a half-size buffer. It uses the full-buffer recursion from the paper and therefore has $O(\log n)$ call-stack words; it does not implement the paper's later bit-stack traversal for $O(1)$ stack words. It does not use insertion-sorted base runs or galloping. Stability/value checks include equal-key records, which ensures reversals are only applied to strictly decreasing runs.
+
+Validation: `g++ -O3 -march=native -std=c++20 -Wall -Wextra -Werror` succeeded, and the full `sortlab selftest` passed, including 1,308 correctness/stability/counting checks for this algorithm. The `directional` profile produced 192 validated rows for `directional_mergesort`, `merge_td`, and `powersort`, at $n=10^6$ across eight inputs (count seeds 1--3 and five serial timing repetitions at seed 1). A fresh-seed count grid added 45 rows over `random`, `runs1024`, `nearly1`, `reversed`, and `sorted`, seeds 4--6. Data and generated tables are `results/directional_2608_all.csv`, `results/directional_2608_heldout_counts.csv`, and `results/directional_2608_tables.md`.
+
+Mean comparisons per element for seeds 1--3 (Directional / `merge_td` / Powersort) were: random 19.084844 / 18.693773 / 18.599039; `runs32` 17.150916 / 18.132520 / 18.019755; `runs1024` 12.414759 / 13.764164 / 10.950137; `nearly1` 14.629874 / 16.064631 / 3.135249; `organpipe` 1.999998 / 7.480974 / 1.999998; reversed 0.999999 / 11.100351 / 0.999999; sorted 0.999999 / 2.361599 / 0.999999; `dup16` 18.653390 / 18.249303 / 7.838704. Fresh seeds 4--6 reproduced the counts for the held-out categories within seed variation (e.g. `runs1024`: 12.414743 / 13.764097 / 10.950168; `nearly1`: 14.628263 / 16.072697 / 3.136173).
+
+The recursive algorithm uses 4,000,000 bytes of auxiliary heap at $n=10^6$. Five-run median ns/element (Directional / `merge_td` / Powersort) were random 75.611 / 75.099 / 77.943; `runs32` 62.515 / 62.614 / 63.883; `runs1024` 42.422 / 42.371 / 39.315; `nearly1` 15.992 / 21.067 / 10.261; reversed 3.169 / 12.100 / 0.894; sorted 2.943 / 5.972 / 1.061. On this machine and setup it improves over the static merge baseline on many ordered distributions, but it does not beat run-adaptive Powersort on the tested suite and its random comparison count is higher than both baselines. The study provides an empirical check for this C++ adaptation; it is not a verification of the paper's proof or a general speed claim.

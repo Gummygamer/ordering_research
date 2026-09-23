@@ -165,3 +165,17 @@ study split the phases to make count and timing rows easier to inspect.
 See `notes/research_notes.md` for interpretation and the important scope
 limit: this implements the paper's Pingpong variant, not its virtual-page,
 low-memory variant.
+
+## Directional Mergesort paper study
+
+- `directional_2608_all.csv`: 192 validated rows across
+  `directional_mergesort`, `merge_td`, and `powersort`, eight distributions,
+  count seeds 1--3, and five serial timing repetitions at seed 1.
+- `directional_2608_heldout_counts.csv`: 45 validated count rows on five
+  representative inputs with fresh seeds 4--6.
+- `directional_2608_tables.md`: generated aggregation of both files.
+
+Both CSVs use `build_id=directional-2608` and `ok=1`. Reproduce the main grid
+with `python3 scripts/run_bench.py --profile directional --build-id directional-2608 --output results/directional_rerun.csv`.
+See `notes/research_notes.md` for the paper link, method scope, and
+interpretation.

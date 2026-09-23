@@ -189,17 +189,32 @@ related run-merging papers, and is configured to implement and benchmark
 reproducible methods in this project when practical.
 
 The first relevant new paper found was Moltmann, Nakajima, and Wild,
-*Virtual-Memory Powersort* (ESA 2026; arXiv:2605.27147). This working tree adds
-`pingpong_powersort`, the paper's few-moves run-storage variant. It uses this
-lab's dynamic run targets and Powersort node powers, with stable non-galloping
-merges. It is **not** the paper's virtual-page implementation and makes no
-low-memory claim. See `notes/research_notes.md` for the comparison and scope.
+*Virtual-Memory Powersort* (ESA 2026; arXiv:2605.27147). Commit `cab0f49`
+implements `pingpong_powersort`, the paper's few-moves run-storage variant. It
+uses this lab's dynamic run targets and Powersort node powers, with stable
+non-galloping merges. It is **not** the paper's virtual-page implementation
+and makes no low-memory claim. See `notes/research_notes.md` for the comparison
+and scope.
 
 The new benchmark profile is `pingpong`; committed study data are
 `results/pingpong_vmpowersort_counts.csv`,
 `results/pingpong_vmpowersort_times.csv`, and
-`results/pingpong_vmpowersort_tables.md`. The current code passed the full
-`sortlab selftest` (including 1,308 checks for the new stable algorithm),
-strict warnings-as-errors C++20 compilation, benchmark row validation, table
-aggregation, and `git diff --check`. Changes are in the working tree and are
-not committed.
+`results/pingpong_vmpowersort_tables.md`. The implementation and evidence
+were committed and pushed in `cab0f49` after the full selftest, strict
+warnings-as-errors C++20 compilation, benchmark row validation, and table
+aggregation passed.
+
+## 2026-09-23 directional mergesort paper study
+
+This heartbeat found Jin and Xu, *Straightforward Entropy-Sensitive
+Mergesort* (arXiv:2608.10421, submitted 2026-08-11). The current change adds
+`directional_mergesort`, a stable recursive C++ adaptation of the paper's
+variant that also detects strictly decreasing runs. It uses half-buffered
+merges and $O(\log n)$ recursive stack words; the paper's later constant-word
+bit-stack variant is not implemented.
+
+The full `directional` profile and fresh-seed counts are in
+`results/directional_2608_all.csv`,
+`results/directional_2608_heldout_counts.csv`, and
+`results/directional_2608_tables.md`. All selftests and benchmark validations
+passed. See `notes/research_notes.md` for the comparison and limitations.

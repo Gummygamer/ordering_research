@@ -155,6 +155,13 @@ The run-merging family is the focus:
   implement the paper's virtual-page, low-memory variant. See
   `notes/research_notes.md` and the `pingpong` benchmark profile for its
   comparison with the galloping `powersort` baseline.
+- `directional_mergesort` adapts a static balanced merge tree using ordered
+  half checks and direction-aware half-buffered merges. It recognizes both
+  ascending and strictly descending runs, following Jin and Xu,
+  [Straightforward Entropy-Sensitive Mergesort](https://arxiv.org/abs/2608.10421).
+  This implementation uses recursive `O(log n)` call-stack space, not the
+  paper's bit-stack traversal. Its `directional` benchmark profile compares
+  it with `merge_td` and `powersort`.
 - `powersort_fj` keeps `powersort`'s generated run targets and merge policy. It
   uses Ford--Johnson only when the detected sorted prefix is too short to make
   binary insertion cheaper; otherwise it preserves and extends that prefix.
