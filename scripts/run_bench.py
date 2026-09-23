@@ -110,6 +110,21 @@ GATE_ALGORITHMS = (
 )
 
 PROFILES = {
+    # Focused implementation study for the few-moves Pingpong Powersort from
+    # Moltmann, Nakajima, and Wild (ESA 2026). Structured and random 1m inputs
+    # expose the trade-off against this lab's galloping copy-based baseline.
+    "pingpong": Profile(
+        grids=(
+            Grid(
+                ("powersort", "pingpong_powersort"),
+                ("random", "dup16", "runs1024", "nearly1", "sorted"),
+                (1_000_000,),
+                5,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
     "quick": Profile(
         grids=(
             Grid(

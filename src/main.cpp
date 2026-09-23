@@ -136,7 +136,7 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
 // ---------------------------------------------------------------------------
 enum Algo {
     A_STD_SORT, A_STD_STABLE, A_HEAP, A_QMO3, A_DUAL, A_BLQ, A_MTD,
-    A_TIM, A_POW, A_POW_FIXED, A_POW_FJ,
+    A_TIM, A_POW, A_POW_FIXED, A_POW_FJ, A_PINGPONG_POW,
     A_HFJ8, A_HFJ12, A_HFJ16, A_HFJ21, A_HFJ32, A_HFJ42,
     A_HFJ56, A_HFJ62, A_HFJ64, A_HFJA62,
     A_HFJ85, A_HFJ123, A_HFJ128, A_HFJAUTO, A_HFJAUTO256, A_HFJAUTO512,
@@ -157,6 +157,7 @@ static const AlgoInfo ALGOS[] = {
     {"powersort",   A_POW,        true,  true},
     {"powersort_fixed", A_POW_FIXED, true, true},
     {"powersort_fj", A_POW_FJ,    false, true},
+    {"pingpong_powersort", A_PINGPONG_POW, true, true},
     {"hybrid_fj8",  A_HFJ8,       false, true},
     {"hybrid_fj12", A_HFJ12,      false, true},
     {"hybrid_fj16", A_HFJ16,      false, true},
@@ -202,6 +203,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_POW:        lab::powersort(a, n, cmp); break;
         case A_POW_FIXED:  lab::powersort_fixed(a, n, cmp); break;
         case A_POW_FJ:     lab::powersort_fj(a, n, cmp); break;
+        case A_PINGPONG_POW: lab::pingpong_powersort(a, n, cmp); break;
         case A_HFJ8:       lab::hybrid_fj<8>(a, n, cmp); break;
         case A_HFJ12:      lab::hybrid_fj<12>(a, n, cmp); break;
         case A_HFJ16:      lab::hybrid_fj<16>(a, n, cmp); break;

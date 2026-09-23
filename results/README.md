@@ -149,3 +149,19 @@ aggregator or concatenated with milestone data:
 The repository ignores `results/raw_*.csv` so interrupted exploratory runs do
 not become commits accidentally. Use an intentional milestone filename for
 results that should be reviewed and committed.
+
+## ESA 2026 Pingpong Powersort study
+
+`pingpong_vmpowersort_counts.csv` (30 rows) and
+`pingpong_vmpowersort_times.csv` (50 rows) compare the new
+`pingpong_powersort` implementation with `powersort` at `n=1,000,000` on
+five distributions. Counts use seeds 1--3; timings use five serial repetitions
+at seed 1. `pingpong_vmpowersort_tables.md` contains the combined aggregation.
+All rows use `build_id=vm-paper-pingpong` and `ok=1`.
+
+The reproducible profile is `python3 scripts/run_bench.py --profile pingpong`
+with an explicit output path. It runs both phases in one CSV; the committed
+study split the phases to make count and timing rows easier to inspect.
+See `notes/research_notes.md` for interpretation and the important scope
+limit: this implements the paper's Pingpong variant, not its virtual-page,
+low-memory variant.

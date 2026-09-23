@@ -147,6 +147,14 @@ The run-merging family is the focus:
   current CPython development source's floor/ceiling minrun sequence, and its
   size-aware final collapse. `powersort_fixed` is the older fixed-minrun
   ablation. Both are stable.
+- `pingpong_powersort` implements the few-moves run-storage choreography from
+  Moltmann, Nakajima, and Wild, [Virtual-Memory Powersort](https://doi.org/10.4230/LIPIcs.ESA.2026.14).
+  It keeps pending runs in a full-size auxiliary array and merges them with
+  the current input run. This first implementation uses this lab's dynamic
+  minrun and node-power policies with ordinary stable merges; it does not yet
+  implement the paper's virtual-page, low-memory variant. See
+  `notes/research_notes.md` and the `pingpong` benchmark profile for its
+  comparison with the galloping `powersort` baseline.
 - `powersort_fj` keeps `powersort`'s generated run targets and merge policy. It
   uses Ford--Johnson only when the detected sorted prefix is too short to make
   binary insertion cheaper; otherwise it preserves and extends that prefix.

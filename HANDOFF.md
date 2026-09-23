@@ -180,3 +180,26 @@ python3 scripts/aggregate.py results/dupveto_97869f3_counts.csv \
   results/dupveto_97869f3_gate_counts.csv
 git diff --check
 ```
+
+## 2026-09-23 paper-monitor and ESA 2026 follow-up
+
+A weekly Codex heartbeat, **Weekly sorting research monitor**, is active on this
+thread. It monitors primary sources for comparison/adaptive sorting and
+related run-merging papers, and is configured to implement and benchmark
+reproducible methods in this project when practical.
+
+The first relevant new paper found was Moltmann, Nakajima, and Wild,
+*Virtual-Memory Powersort* (ESA 2026; arXiv:2605.27147). This working tree adds
+`pingpong_powersort`, the paper's few-moves run-storage variant. It uses this
+lab's dynamic run targets and Powersort node powers, with stable non-galloping
+merges. It is **not** the paper's virtual-page implementation and makes no
+low-memory claim. See `notes/research_notes.md` for the comparison and scope.
+
+The new benchmark profile is `pingpong`; committed study data are
+`results/pingpong_vmpowersort_counts.csv`,
+`results/pingpong_vmpowersort_times.csv`, and
+`results/pingpong_vmpowersort_tables.md`. The current code passed the full
+`sortlab selftest` (including 1,308 checks for the new stable algorithm),
+strict warnings-as-errors C++20 compilation, benchmark row validation, table
+aggregation, and `git diff --check`. Changes are in the working tree and are
+not committed.

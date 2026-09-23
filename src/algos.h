@@ -538,6 +538,89 @@ void powersort_fixed(T* a, size_t n, C cmp) {
                    });
 }
 
+// Pingpong Powersort, following Moltmann, Nakajima, and Wild (ESA 2026).
+// Runs on the pending stack are copied to an auxiliary array; the current run
+// remains in the input. Each merge streams the stack run and current run into
+// the input. The final merge can target the auxiliary array, but we keep the
+// simpler input-destination path here so the implementation stays directly
+// comparable to this lab's current Powersort run policy and galloping baseline.
+// This variant intentionally uses ordinary stable merges (the paper's setup
+// does not gallop), and therefore measures the few-moves choreography rather
+// than the paper's separate virtual-page memory scheme.
+template <class T, class C>
+void pingpong_powersort(T* a, size_t n, C cmp) {
+    if (n < 2) return;
+    struct Run { size_t base, len; int power; };
+    std::vector<Run> pending;
+    pending.reserve(96);
+    std::unique_ptr<T[]> saved(new T[n]);
+    MinRunGenerator minruns(n);
+
+    auto next_run = [&](size_t lo) {
+        size_t run = count_run(a, lo, n, cmp);
+        size_t minrun = minruns.next();
+        if (run < minrun) {
+            size_t force = std::min(minrun, n - lo);
+            binary_insert_extend(a + lo, run, force, cmp);
+            run = force;
+        }
+        return run;
+    };
+    auto node_power = [&](size_t s1, size_t n1, size_t n2) {
+        int result = 0;
+        uint64_t va = 2 * (uint64_t)s1 + n1;
+        uint64_t vb = va + n1 + n2;
+        for (;;) {
+            ++result;
+            if (va >= n) { va -= n; vb -= n; }
+            else if (vb >= n) break;
+            va <<= 1; vb <<= 1;
+        }
+        return result;
+    };
+    auto merge = [&](const Run& left, const Run& right) {
+        assert(left.base + left.len == right.base);
+        g_merge_cost += left.len + right.len;
+        size_t i = 0, j = 0, out = left.base;
+        const T* l = saved.get() + left.base;
+        while (i < left.len && j < right.len) {
+            if (cmp(a[right.base + j], l[i]))
+                a[out++] = a[right.base + j++];
+            else
+                a[out++] = l[i++];
+        }
+        while (i < left.len) a[out++] = l[i++];
+        // Any remaining right suffix is already in its final location.
+    };
+
+    size_t curr_base = 0;
+    size_t curr_len = next_run(0);
+    while (curr_base + curr_len < n) {
+        const size_t next_base = curr_base + curr_len;
+        const size_t next_len = next_run(next_base);
+        const int power = node_power(curr_base, curr_len, next_len);
+        while (!pending.empty() && pending.back().power >= power) {
+            Run left = pending.back();
+            pending.pop_back();
+            merge(left, {curr_base, curr_len, 0});
+            curr_base = left.base;
+            curr_len += left.len;
+        }
+        std::memcpy(saved.get() + curr_base, a + curr_base,
+                    curr_len * sizeof(T));
+        pending.push_back({curr_base, curr_len, power});
+        curr_base = next_base;
+        curr_len = next_len;
+    }
+    while (!pending.empty()) {
+        Run left = pending.back();
+        pending.pop_back();
+        merge(left, {curr_base, curr_len, 0});
+        curr_base = left.base;
+        curr_len += left.len;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Ford–Johnson merge-insertion (for small blocks; not stable)
 // ---------------------------------------------------------------------------

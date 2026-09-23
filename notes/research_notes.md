@@ -208,3 +208,25 @@ dup2048 acceptance.
 2. Optionally extend the gate toward a multi-cap ladder (128--1024) using the
    section-6 winners, and toward smaller n with rescaled probe budgets; both
    need fresh held-out validation.
+
+## 11. Pingpong Powersort from Virtual-Memory Powersort (2026-09-23)
+
+Moltmann, Nakajima, and Wild, [Virtual-Memory Powersort](https://doi.org/10.4230/LIPIcs.ESA.2026.14), ESA 2026; [arXiv:2605.27147](https://arxiv.org/abs/2605.27147), first submitted 2026-05-26 and revised 2026-07-08. The paper presents two new variants: Pingpong Powersort, which reduces data moves using an auxiliary array, and Virtual-Memory Powersort, which reduces auxiliary storage to $O(\sqrt{n\log n})$ words using pages. This repository implements the Pingpong variant only in this first paper study; it does **not** claim the low-memory virtual-page result.
+
+`pingpong_powersort` follows the paper's run-storage idea: runs waiting on the Powersort stack are copied once to a full-size auxiliary array; the current run remains in the input and is merged with the saved stack run. It reuses this lab's dynamic minrun and node-power policies, descending-run detection, generic comparator, and stability tests. Its merge is a simple stable merge without galloping, matching the paper's non-galloping experimental setup more closely than the local `powersort` baseline. Its comparison-count differences therefore reflect both the storage variant and the differing merge strategy. The code is a local implementation of the paper's described algorithm, not a port of its supplemental source.
+
+Validation used the warnings-as-errors C++20 build with build ID `vm-paper-pingpong`, followed by `sortlab selftest`: all 1,308 stability/value/counting checks for `pingpong_powersort` passed; the other registered algorithms and the Ford--Johnson and gate accounting checks also passed. The repeatable grid is `python3 scripts/run_bench.py --profile pingpong --build-id vm-paper-pingpong --output results/pingpong_vmpowersort_all.csv`; its count and time phases were run separately and saved to `pingpong_vmpowersort_counts.csv` (30 rows) and `pingpong_vmpowersort_times.csv` (50 rows). The table aggregation is `pingpong_vmpowersort_tables.md`.
+
+At $n=10^6$, mean count-mode comparisons per element over seeds 1--3 were:
+
+| Input | Pingpong | Powersort | Difference per element |
+| --- | ---: | ---: | ---: |
+| random | 18.594766 | 18.599039 | -0.004273 |
+| dup16 | 18.157353 | 7.838704 | +10.318649 |
+| runs1024 | 10.949917 | 10.950137 | -0.000220 |
+| nearly1 | 15.446739 | 3.135249 | +12.311490 |
+| sorted | 0.999999 | 0.999999 | 0 |
+
+These large differences on duplicate and nearly-sorted data come from omitting the baseline's trim/galloping merge path. They are comparison counts, not runtime measurements. Across five serial timing repetitions at seed 1, median nanoseconds per element (Pingpong / Powersort) were 78.712 / 80.101 on random, 38.434 / 40.337 on `dup16`, 36.591 / 38.378 on `runs1024`, 13.556 / 10.342 on `nearly1`, and 0.812 / 0.689 on sorted. This run sample was faster on random, duplicates, and `runs1024`, and slower on the two highly ordered cases; it is one machine/build/input sample, not a general speed claim.
+
+Peak tracked auxiliary heap was 8,002,304 bytes for Pingpong versus 4,002,288 bytes for Powersort on random 1m. This confirms the expected full-size-buffer cost in this harness; Pingpong is a data-movement study, not an almost-in-place implementation. A paper-specific follow-up is a comparator-generic implementation of the virtual-page scheme, whose buffer lifetime and final permutation logic need separate high-coverage validation before making any low-memory claim.
