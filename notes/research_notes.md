@@ -1,6 +1,6 @@
 # Research notes — comparison sorting and adaptive merging
 
-Updated 2026-09-23. These notes separate published guarantees from this
+Updated 2026-09-25. These notes separate published guarantees from this
 project's generated-input measurements.
 
 ## 1. Powersort and current CPython engineering
@@ -242,3 +242,26 @@ Validation: `g++ -O3 -march=native -std=c++20 -Wall -Wextra -Werror` succeeded, 
 Mean comparisons per element for seeds 1--3 (Directional / `merge_td` / Powersort) were: random 19.084844 / 18.693773 / 18.599039; `runs32` 17.150916 / 18.132520 / 18.019755; `runs1024` 12.414759 / 13.764164 / 10.950137; `nearly1` 14.629874 / 16.064631 / 3.135249; `organpipe` 1.999998 / 7.480974 / 1.999998; reversed 0.999999 / 11.100351 / 0.999999; sorted 0.999999 / 2.361599 / 0.999999; `dup16` 18.653390 / 18.249303 / 7.838704. Fresh seeds 4--6 reproduced the counts for the held-out categories within seed variation (e.g. `runs1024`: 12.414743 / 13.764097 / 10.950168; `nearly1`: 14.628263 / 16.072697 / 3.136173).
 
 The recursive algorithm uses 4,000,000 bytes of auxiliary heap at $n=10^6$. Five-run median ns/element (Directional / `merge_td` / Powersort) were random 75.611 / 75.099 / 77.943; `runs32` 62.515 / 62.614 / 63.883; `runs1024` 42.422 / 42.371 / 39.315; `nearly1` 15.992 / 21.067 / 10.261; reversed 3.169 / 12.100 / 0.894; sorted 2.943 / 5.972 / 1.061. On this machine and setup it improves over the static merge baseline on many ordered distributions, but it does not beat run-adaptive Powersort on the tested suite and its random comparison count is higher than both baselines. The study provides an empirical check for this C++ adaptation; it is not a verification of the paper's proof or a general speed claim.
+
+
+## 13. Five-seed runtime follow-up (2026-09-25)
+
+Build `7c7cd7e87ea8` repeats the random n=1m comparison for Powersort,
+`powersort_fj`, and `hybrid_fjauto2048` over seeds 1--5, with 15 serial timing
+repetitions for every algorithm/seed and separate exact count-mode rows. Mean
+comparison counts per element are 18.599115 / 18.579697 / 18.520462. PFJ's
+mean saving over Powersort is 0.019418 comparisons per element.
+
+The paired per-seed median-time delta for PFJ has median +6.64% and range
+-11.02% to +24.02%; PFJ is slower on three seeds and faster on two. These data
+do not establish a stable PFJ speed effect. Auto2048 is slower on all five
+seeds, with median paired delta +74.29% (range +49.79% to +115.59%) while
+using fewer comparisons. This supports treating comparison reduction and
+runtime as distinct outcomes.
+
+Timing medians varied substantially by seed. The run did not pin CPU frequency
+or interleave algorithm order; therefore the mixed PFJ result is inconclusive.
+Count-mode `time_ns` is excluded from runtime analysis. Raw data, aggregated
+tables, and per-seed analysis are in `results/pfj_runtime_7c7cd7e_all.csv`,
+`results/pfj_runtime_7c7cd7e_tables.md`, and
+`results/pfj_runtime_7c7cd7e_analysis.md`.

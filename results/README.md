@@ -1,5 +1,28 @@
 # Results inventory
 
+## Five-seed runtime follow-up (`7c7cd7e`)
+
+- `pfj_runtime_7c7cd7e_all.csv`: 240 validated rows for `powersort`,
+  `powersort_fj`, and `hybrid_fjauto2048` on random inputs of n=1m. Counts
+  cover seeds 1--5; timing has 15 serial repetitions for each algorithm/seed.
+- `pfj_runtime_7c7cd7e_tables.md`: strict aggregation of the raw CSV.
+- `pfj_runtime_7c7cd7e_analysis.md`: paired per-seed timing medians,
+  comparison counts, and interpretation.
+
+All rows have `ok=1` and `build_id=7c7cd7e87ea8`. The run used GCC 15.2,
+`-O3 -march=native`, on an Intel Core i7-11800H. PFJ saves about 0.0194
+comparisons per element, but its paired time delta is mixed across seeds
+(median +6.64%, range -11.02% to +24.02%). Auto2048 is slower in all five
+seeds (median paired delta +74.29%). The PFJ runtime result is inconclusive;
+see the analysis for the measured spread and limitations.
+
+```sh
+python3 scripts/aggregate.py results/pfj_runtime_7c7cd7e_all.csv \
+  --title 'Five-seed runtime follow-up (7c7cd7e)' \
+  -o results/pfj_runtime_7c7cd7e_tables.md
+```
+
+
 ## K=112 duplicate-veto evaluation (`97869f3`)
 
 - `dupveto_97869f3_counts.csv`: 216 count rows = the four gate-study

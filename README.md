@@ -295,6 +295,22 @@ improvements across 81 cases; auto2048's non-random classification remains
 comparisons are too sparse to claim a speed improvement. Full details are in
 `results/prefixpair_de3837c_analysis.md`.
 
+### 4.1 Five-seed runtime follow-up (2026-09-25)
+
+The 2026-09-25 follow-up repeats the random n=1,000,000 comparison across
+seeds 1--5, with 15 serial timing repetitions per algorithm and separate count
+mode. `powersort_fj` saves a mean 0.019418 comparisons per element, but the
+paired timing delta is mixed: median +6.64%, range -11.02% to +24.02%, and
+PFJ is slower on three of five seeds. This run does not establish a consistent
+PFJ speed penalty or gain. `hybrid_fjauto2048` is slower in all five seeds,
+with a median paired delta of +74.29%, despite reducing comparisons further.
+
+The timing spread is substantial; CPU frequency was not pinned and algorithm
+order was not interleaved. Treat the PFJ timing result as inconclusive. Full
+per-seed data are in `results/pfj_runtime_7c7cd7e_all.csv`, the aggregation is
+in `results/pfj_runtime_7c7cd7e_tables.md`, and the analysis is in
+`results/pfj_runtime_7c7cd7e_analysis.md`.
+
 ### 5. Dyadic displacement-scale response
 
 A count-only follow-up at `n=1,000,000` covers all eight milestone algorithms,
