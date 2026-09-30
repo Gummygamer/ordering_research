@@ -1,13 +1,15 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-07-19 after mapping the duplicate-cardinality response
-(`498b627`) and replacing the gate's duplicate veto with the
-pre-registered K=112 cardinality estimate (`97869f3`). The filesystem and
-Git history remain authoritative; check both before acting.
+Updated 2026-09-30 after the learned Shellsort gap-sequence study. The earlier
+duplicate-cardinality response (`498b627`) and pre-registered K=112 veto
+replacement (`97869f3`) remain part of the history. The filesystem and Git
+history remain authoritative; check both before acting.
 
 ## Current state
 
-The latest code commit is `97869f3`: `hybrid_gate` now counts equal pairs
+The `97869f3` milestone added a `hybrid_gate` cardinality veto. The current
+checkout also includes the 2026-09-30 learned Shellsort sequence study
+documented below; use `git log` for the latest commit. `hybrid_gate` counts equal pairs
 over its full adjacent probe sample and vetoes auto2048 iff
 `equal_pairs * 112 >= adjacent`. `498b627` had previously generalized the
 duplicate generators to `dupK` (i.i.d. `rng() % K`, bit-identical to the
@@ -20,7 +22,7 @@ CPython development design's varying floor/ceiling minrun targets and
 size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
 ablation.
 
-The registry has 35 entries: 34 comparison algorithms and one LSD radix
+The registry has 40 entries: 39 comparison algorithms and one LSD radix
 speed reference. Ford--Johnson supports caps through 2048 with cap-sized
 scratch arrays and an extended Jacobsthal schedule. The benchmark schema is:
 
@@ -218,3 +220,21 @@ The full `directional` profile and fresh-seed counts are in
 `results/directional_2608_heldout_counts.csv`, and
 `results/directional_2608_tables.md`. All selftests and benchmark validations
 passed. See `notes/research_notes.md` for the comparison and limitations.
+
+## 2026-09-30 Shellsort gap-sequence study
+
+This heartbeat found Liu, *A New Gap Sequence for Shellsort* (arXiv:2609.29881,
+submitted 2026-09-24). The current work adds unstable `shell_learned`, with the
+paper's finite tuned prefix and exact rational-geometric tail, plus Ciura and
+Tokuda sequence baselines. Exact fixed-width arithmetic and a fixed gap buffer
+avoid heap allocations. The full RL search and asymptotic tail companions are
+not implemented.
+
+The 1m comparison/runtime grid, fresh-seed counts, and one-seed 10m count grid
+are in `results/shellsort_2609_all.csv`,
+`results/shellsort_2609_heldout.csv`, and
+`results/shellsort_2609_paperscale.csv`; aggregate tables are in
+`results/shellsort_2609_tables.md`. The full selftest passed, including exact
+gap-prefix checks. Results are mixed against Ciura/Tokuda at 1m; the single
+10m five-input sample used 1.58% fewer total comparisons than Ciura and 1.33%
+fewer than Tokuda, without reproducing the paper's full 25-task experiment.

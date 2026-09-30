@@ -137,6 +137,7 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
 enum Algo {
     A_STD_SORT, A_STD_STABLE, A_HEAP, A_QMO3, A_DUAL, A_BLQ, A_MTD,
     A_TIM, A_POW, A_POW_FIXED, A_POW_FJ, A_PINGPONG_POW, A_DIRECTIONAL,
+    A_SHELL_LEARNED, A_SHELL_CIURA, A_SHELL_TOKUDA,
     A_HFJ8, A_HFJ12, A_HFJ16, A_HFJ21, A_HFJ32, A_HFJ42,
     A_HFJ56, A_HFJ62, A_HFJ64, A_HFJA62,
     A_HFJ85, A_HFJ123, A_HFJ128, A_HFJAUTO, A_HFJAUTO256, A_HFJAUTO512,
@@ -159,6 +160,9 @@ static const AlgoInfo ALGOS[] = {
     {"powersort_fj", A_POW_FJ,    false, true},
     {"pingpong_powersort", A_PINGPONG_POW, true, true},
     {"directional_mergesort", A_DIRECTIONAL, true, true},
+    {"shell_learned", A_SHELL_LEARNED, false, true},
+    {"shell_ciura", A_SHELL_CIURA, false, true},
+    {"shell_tokuda", A_SHELL_TOKUDA, false, true},
     {"hybrid_fj8",  A_HFJ8,       false, true},
     {"hybrid_fj12", A_HFJ12,      false, true},
     {"hybrid_fj16", A_HFJ16,      false, true},
@@ -206,6 +210,9 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_POW_FJ:     lab::powersort_fj(a, n, cmp); break;
         case A_PINGPONG_POW: lab::pingpong_powersort(a, n, cmp); break;
         case A_DIRECTIONAL: lab::directional_mergesort(a, n, cmp); break;
+        case A_SHELL_LEARNED: lab::shellsort_learned(a, n, cmp); break;
+        case A_SHELL_CIURA: lab::shellsort_ciura(a, n, cmp); break;
+        case A_SHELL_TOKUDA: lab::shellsort_tokuda(a, n, cmp); break;
         case A_HFJ8:       lab::hybrid_fj<8>(a, n, cmp); break;
         case A_HFJ12:      lab::hybrid_fj<12>(a, n, cmp); break;
         case A_HFJ16:      lab::hybrid_fj<16>(a, n, cmp); break;
@@ -295,6 +302,35 @@ static bool selftest() {
         std::printf("%-12s %s (%zu checks, %zu fails)\n", ai.name,
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
+    }
+
+    // The three Shellsort gap generators must reproduce their published
+    // finite prefixes exactly, including Liu's tuned prefix and rational tail.
+    {
+        const std::vector<size_t> expected_learned =
+            {1, 3, 8, 20, 47, 116, 300, 585, 1416};
+        const std::vector<size_t> expected_ciura =
+            {1, 4, 10, 23, 57, 132, 301, 701, 1577};
+        const std::vector<size_t> expected_tokuda =
+            {1, 4, 9, 20, 46, 103, 233, 525, 1182};
+        auto ascending = [](const lab::ShellGaps& gaps) {
+            return std::vector<size_t>(gaps.values.begin(),
+                                       gaps.values.begin() + gaps.size);
+        };
+        auto check_sequence = [&](const char* name, lab::ShellGaps gaps,
+                                  const std::vector<size_t>& expected) {
+            gaps.reverse();
+            bool ok = ascending(gaps) == expected;
+            std::printf("%-12s %s (%zu gaps)\n", name,
+                        ok ? "ok" : "FAIL", expected.size());
+            all_ok &= ok;
+        };
+        check_sequence("shell_gaps_new", lab::shell_learned_gaps(2000),
+                       expected_learned);
+        check_sequence("shell_gaps_ciura", lab::shell_ciura_gaps(2000),
+                       expected_ciura);
+        check_sequence("shell_gaps_tokuda", lab::shell_tokuda_gaps(2000),
+                       expected_tokuda);
     }
 
     // The prefix-aware entry point must be exactly the ordinary FJ path minus

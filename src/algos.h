@@ -5,13 +5,16 @@
 // auxiliary memory by global operator new/delete instrumentation (main.cpp).
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <random>
 #include <type_traits>
 #include <vector>
+#include <boost/multiprecision/cpp_int.hpp>
 
 namespace lab {
 
@@ -1171,6 +1174,129 @@ void directional_mergesort(T* a, size_t n, C cmp) {
 
     Purity result = sort_rec(sort_rec, 0, n);
     if (result.descending) std::reverse(a, a + n);
+}
+
+// ---------------------------------------------------------------------------
+// Shellsort gap-sequence study: Liu's learned/tuned rational-geometric rule,
+// Ciura's prefix extended by 2.25, and Tokuda's rounded geometric rule.
+// A fixed-size gap buffer keeps the sort itself free of dynamic gap storage.
+// ---------------------------------------------------------------------------
+
+struct ShellGaps {
+    std::array<size_t, 128> values{};
+    size_t size = 0;
+
+    void push(size_t gap, size_t n) {
+        if (gap == 0 || gap >= n) return;
+        for (size_t i = 0; i < size; ++i)
+            if (values[i] == gap) return;
+        assert(size < values.size());
+        values[size++] = gap;
+    }
+
+    void reverse() {
+        std::reverse(values.begin(), values.begin() + size);
+    }
+};
+
+// The largest rational power needed for any 64-bit array length is under
+// 3,200 bits. A fixed 4,096-bit integer keeps exact gap generation on-stack
+// with no heap allocation while leaving ample headroom for size_t inputs.
+using ShellExactInt = boost::multiprecision::number<
+    boost::multiprecision::cpp_int_backend<
+        4096, 4096, boost::multiprecision::signed_magnitude,
+        boost::multiprecision::unchecked, void>>;
+static_assert(std::numeric_limits<size_t>::digits <= 64,
+              "Shellsort's fixed-width gap arithmetic supports up to 64-bit size_t");
+
+template <class T, class C>
+void shellsort_with_gaps(T* a, size_t n, C cmp, const ShellGaps& gaps) {
+    for (size_t gi = 0; gi < gaps.size; ++gi) {
+        const size_t gap = gaps.values[gi];
+        for (size_t i = gap; i < n; ++i) {
+            T value = a[i];
+            size_t j = i;
+            while (j >= gap && cmp(value, a[j - gap])) {
+                a[j] = a[j - gap];
+                j -= gap;
+            }
+            a[j] = value;
+        }
+    }
+}
+
+inline ShellGaps shell_learned_gaps(size_t n) {
+    ShellGaps gaps;
+    constexpr size_t prefix[] = {1, 3, 8, 20, 47, 116, 300, 585};
+    for (size_t gap : prefix) gaps.push(gap, n);
+
+    constexpr uint64_t alpha_num = 420574650882923ull;
+    constexpr uint64_t alpha_den = 7668945023518835ull;
+    constexpr uint64_t ratio_num = 582942583375009ull;
+    constexpr uint64_t ratio_den = 250000000000000ull;
+    ShellExactInt numerator = alpha_num;
+    ShellExactInt denominator = alpha_den;
+    for (int t = 0; t < 12; ++t) {
+        numerator *= ratio_num;
+        denominator *= ratio_den;
+    }
+    for (;;) {
+        ShellExactInt exact_gap = numerator / denominator;
+        if (exact_gap >= n) break;
+        gaps.push(exact_gap.convert_to<size_t>(), n);
+        numerator *= ratio_num;
+        denominator *= ratio_den;
+    }
+    gaps.reverse();
+    return gaps;
+}
+
+inline ShellGaps shell_ciura_gaps(size_t n) {
+    ShellGaps gaps;
+    constexpr size_t prefix[] = {1, 4, 10, 23, 57, 132, 301, 701};
+    for (size_t gap : prefix) gaps.push(gap, n);
+    size_t gap = prefix[sizeof(prefix) / sizeof(prefix[0]) - 1];
+    while (gap < n && gap <= (SIZE_MAX - 2) / 9) {
+        size_t next = (gap * 9 + 2) / 4; // nearest integer to 2.25 * gap
+        if (next <= gap || next >= n) break;
+        gaps.push(next, n);
+        gap = next;
+    }
+    gaps.reverse();
+    return gaps;
+}
+
+inline ShellGaps shell_tokuda_gaps(size_t n) {
+    ShellGaps gaps;
+    gaps.push(1, n);
+    ShellExactInt nine_power = 9; // 9^k, k starts at 1
+    ShellExactInt four_power = 4; // 4^k
+    for (;;) {
+        ShellExactInt numerator = 9 * nine_power - 4 * four_power;
+        ShellExactInt denominator = 5 * four_power;
+        ShellExactInt exact_gap = (numerator + denominator - 1) / denominator;
+        if (exact_gap >= n) break;
+        gaps.push(exact_gap.convert_to<size_t>(), n);
+        nine_power *= 9;
+        four_power *= 4;
+    }
+    gaps.reverse();
+    return gaps;
+}
+
+template <class T, class C>
+void shellsort_learned(T* a, size_t n, C cmp) {
+    shellsort_with_gaps(a, n, cmp, shell_learned_gaps(n));
+}
+
+template <class T, class C>
+void shellsort_ciura(T* a, size_t n, C cmp) {
+    shellsort_with_gaps(a, n, cmp, shell_ciura_gaps(n));
+}
+
+template <class T, class C>
+void shellsort_tokuda(T* a, size_t n, C cmp) {
+    shellsort_with_gaps(a, n, cmp, shell_tokuda_gaps(n));
 }
 
 // ---------------------------------------------------------------------------

@@ -110,6 +110,20 @@ GATE_ALGORITHMS = (
 )
 
 PROFILES = {
+    # Liu's learned and finite-prefix-tuned Shellsort sequence (arXiv:2609.29881)
+    # against its closest practical baselines and two broad comparison sorts.
+    "shellsort": Profile(
+        grids=(
+            Grid(
+                ("shell_learned", "shell_ciura", "shell_tokuda", "std_sort", "powersort"),
+                ("random", "dup16", "runs1024", "nearly1", "reversed", "sorted"),
+                (1_000_000,),
+                5,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
     # Initial practical evaluation of directional mergesort++ from Jin and Xu
     # (arXiv:2608.10421), against a static merge baseline and adaptive
     # Powersort on random, ordered, and run-structured inputs.

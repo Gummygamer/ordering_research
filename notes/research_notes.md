@@ -1,6 +1,8 @@
 # Research notes — comparison sorting and adaptive merging
 
-Updated 2026-09-25. These notes separate published guarantees from this
+Updated 2026-09-30. These notes separate published guarantees from this
+
+Updated 2026-09-30. These notes separate published guarantees from this
 project's generated-input measurements.
 
 ## 1. Powersort and current CPython engineering
@@ -265,3 +267,19 @@ Count-mode `time_ns` is excluded from runtime analysis. Raw data, aggregated
 tables, and per-seed analysis are in `results/pfj_runtime_7c7cd7e_all.csv`,
 `results/pfj_runtime_7c7cd7e_tables.md`, and
 `results/pfj_runtime_7c7cd7e_analysis.md`.
+
+## 14. Learned Shellsort gap sequence (2026-09-30)
+
+Bo Liu, [A New Gap Sequence for Shellsort: RL-Driven Algorithm Discovery Beyond $N^{4/3}$](https://arxiv.org/abs/2609.29881), submitted 2026-09-24. The paper searches executable gap generators using exact comparison/move counts, then tunes a finite prefix of a rational-geometric backbone. Its practical sequence is
+
+`1, 3, 8, 20, 47, 116, 300, 585, h_12, h_13, ...`,
+
+where `h_t = floor(alpha * R^t)`, `alpha = 420574650882923 / 7668945023518835`, `R = 582942583375009 / 250000000000000`, and `t >= 12` after the tuned prefix. At n=10m, one local five-input count sample (seed 1999) used 1.580% fewer total comparisons than the Ciura extension and 1.330% fewer than Tokuda; random was a small regression against both. This is a single seed and these local generators do not reproduce the paper's exact test tasks.
+
+`shell_learned` implements the published practical sequence with exact fixed 4096-bit arithmetic, a fixed 128-entry stack gap buffer, and no heap allocation. `shell_ciura` uses the listed Ciura prefix extended by rounding 2.25x; `shell_tokuda` uses the exact ceiling form of Tokuda's geometric rule. All three are unstable. The implementation is the frozen sequence, not the paper's RL discovery system. It also does not add the paper's zero-density `h_s+1` companions beyond t=2724; that completion begins above $10^{1000}$ and is outside feasible machine inputs, so this repository does not claim or verify the paper's asymptotic theorem.
+
+Validation: warnings-as-errors C++20 compilation and the full selftest passed. Each Shellsort variant passed 872 value/counted-comparator checks over the existing distributions and sizes; separate generator checks verified its nine expected gaps at n=2000. There are no stability checks because these algorithms are registered as unstable. The `shellsort` profile has 240 validated rows at n=1m (three count seeds and five serial timing repetitions at seed 1); held-out seeds 4--6 add 60 count rows for random, `runs1024`, `nearly1`, and reversed; a separate one-seed count grid at n=10m adds 15 rows. All 315 rows have `ok=1` and build ID `shell-paper-2609-fixed`; Shellsort has zero tracked heap auxiliary bytes, while Powersort reports its merge buffer. Full data and commands are in `results/shellsort_2609_all.csv`, `results/shellsort_2609_heldout.csv`, `results/shellsort_2609_paperscale.csv`, and `results/shellsort_2609_tables.md`.
+
+At n=1m, mean comparisons per element / median serial ns per element (learned / Ciura / Tokuda / Powersort) were: random 32.090 / 168.128; 31.905 / 129.191; 32.058 / 123.964; 18.599 / 83.543. `dup16`: 17.770 / 41.961; 17.778 / 36.887; 18.166 / 39.682; 7.839 / 45.946. `runs1024`: 30.821 / 86.372; 29.768 / 79.670; 30.863 / 80.085; 10.950 / 41.122. `nearly1`: 26.952 / 98.633; 26.992 / 99.548; 27.161 / 101.019; 3.136 / 12.090. Reversed: 20.763 / 16.725; 21.156 / 19.169; 21.297 / 20.010; 1.000 / 0.862. Sorted: 15.070 / 15.519; 15.171 / 17.031; 15.602 / 15.350; 1.000 / 0.610. Shellsort uses no tracked heap; Powersort's random 1m auxiliary peak is 4,002,304 B. The new gaps modestly improve on Ciura/Tokuda in some distributions and regress in others; they do not approach Powersort's comparison counts or timing on this local suite. The 10m comparison aggregate is more favorable, but is only one seed over five locally generated inputs, and is not an independent replication of the paper's 25-task test.
+
+Two other new arXiv hits were screened without implementation: [Certification of Bilateral Patience Sort in Theorema and Rocq](https://arxiv.org/abs/2609.34889) is a formalization and proof-engineering case study of an existing sort, not a new comparison-count or practical sorting method; [From Shortcut Learning to Discrete Neural Insertion Sort](https://arxiv.org/abs/2609.31114) studies faithful neural execution trained at length 16 and generalized to 64/128, rather than a comparator-based C++ sorter. Neither supplied a method fitting the lab's benchmark objective.

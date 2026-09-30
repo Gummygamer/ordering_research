@@ -1,0 +1,16 @@
+algo,dist,n,seed,mode,rep,time_ns,comparisons,heap_aux_bytes,fj_stack_bound_bytes,merge_span_elems,ok,small_merge,fj_run_thresh,fj_max,build_id
+shell_learned,random,10000000,1999,count,0,2527885213,386679465,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_learned,dup16,10000000,1999,count,0,778791876,205049845,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_learned,nearly1,10000000,1999,count,0,1577616099,333891748,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_learned,reversed,10000000,1999,count,0,559881454,239748396,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_learned,runs1024,10000000,1999,count,0,1456690000,366959951,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_ciura,random,10000000,1999,count,0,1881654609,383834625,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_ciura,dup16,10000000,1999,count,0,715772219,206388201,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_ciura,nearly1,10000000,1999,count,0,1524020750,334407302,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_ciura,reversed,10000000,1999,count,0,606790744,249946632,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_ciura,runs1024,10000000,1999,count,0,1844373338,382357968,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_tokuda,random,10000000,1999,count,0,2272855775,384979479,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_tokuda,dup16,10000000,1999,count,0,1049417113,209927029,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_tokuda,nearly1,10000000,1999,count,0,1393231866,335351114,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_tokuda,reversed,10000000,1999,count,0,627312536,257081200,0,0,0,1,96,0,2048,shell-paper-2609-fixed
+shell_tokuda,runs1024,10000000,1999,count,0,1449421762,365647106,0,0,0,1,96,0,2048,shell-paper-2609-fixed

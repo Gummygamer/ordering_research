@@ -125,6 +125,17 @@ The actual output is one physical CSV line; it is wrapped above for readability.
   exact count of assignments or bytes moved.
 - `ok=1` means the result exactly matched a `std::sort` reference vector.
 
+## New Shellsort gap sequence study
+
+The lab includes `shell_learned`, a C++ implementation of the tuned
+rational-geometric gap sequence from Liu's [2026 Shellsort paper](https://arxiv.org/abs/2609.29881),
+alongside Ciura and Tokuda sequence baselines. The implementation uses exact
+fixed-width arithmetic for the learned tail and no heap allocation. It is
+unstable, as Shellsort generally is; it does not reproduce the paper's RL
+search or its asymptotic completion beyond practical input sizes. See
+`notes/research_notes.md` and `results/shellsort_2609_tables.md` for tests and
+comparisons at one and ten million elements.
+
 The `milestone_d310ed5_*.csv` and `prefixpair_de3837c_*.csv` files use this
 schema. The seven older tracked CSV files are explicitly legacy: five are
 headerless 11-column benchmark checkpoints and two are 7-column FJ profiles.

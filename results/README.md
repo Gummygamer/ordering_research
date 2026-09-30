@@ -23,6 +23,39 @@ python3 scripts/aggregate.py results/pfj_runtime_7c7cd7e_all.csv \
 ```
 
 
+## Learned Shellsort sequence (`shell-paper-2609-fixed`)
+
+- `shellsort_2609_all.csv`: 240 validated rows for the learned sequence,
+  Ciura, Tokuda, `std_sort`, and Powersort; six 1m input patterns, three count
+  seeds, and five serial time repetitions at seed 1.
+- `shellsort_2609_heldout.csv`: 60 fresh-seed count rows (seeds 4--6) for
+  random, `runs1024`, `nearly1`, and reversed 1m inputs.
+- `shellsort_2609_paperscale.csv`: 15 count-only rows at n=10m, seed 1999,
+  for five input patterns and the three Shellsort sequences.
+- `shellsort_2609_tables.md`: strict aggregation of the above 315 rows.
+
+All rows have `ok=1` and build ID `shell-paper-2609-fixed`. The Shellsort
+variants use zero tracked auxiliary heap; Powersort reports its merge buffer.
+Shellsort variants are unstable. Reproduce the
+primary profile, held-out grid, and 10m count check with:
+
+```sh
+python3 scripts/run_bench.py --profile shellsort \
+  --build-id shell-paper-2609-fixed --output results/shellsort_2609_all.csv
+python3 scripts/run_bench.py --profile shellsort --phase count \
+  --count-seeds 4,5,6 --dists random,runs1024,nearly1,reversed \
+  --build-id shell-paper-2609-fixed --output results/shellsort_2609_heldout.csv
+python3 scripts/run_bench.py --profile shellsort --phase count --sizes 10m \
+  --dists random,dup16,nearly1,reversed,runs1024 --count-seeds 1999 \
+  --algos shell_learned,shell_ciura,shell_tokuda --jobs 3 \
+  --build-id shell-paper-2609-fixed \
+  --output results/shellsort_2609_paperscale.csv
+python3 scripts/aggregate.py results/shellsort_2609_all.csv \
+  results/shellsort_2609_heldout.csv results/shellsort_2609_paperscale.csv \
+  --title 'Learned Shellsort gap sequence (2609.29881)' \
+  -o results/shellsort_2609_tables.md
+```
+
 ## K=112 duplicate-veto evaluation (`97869f3`)
 
 - `dupveto_97869f3_counts.csv`: 216 count rows = the four gate-study
