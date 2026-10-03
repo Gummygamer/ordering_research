@@ -33,11 +33,19 @@ python3 scripts/aggregate.py results/pfj_runtime_7c7cd7e_all.csv \
 - `shellsort_2609_paperscale.csv`: 15 count-only rows at n=10m, seed 1999,
   for five input patterns and the three Shellsort sequences.
 - `shellsort_2609_tables.md`: strict aggregation of the above 315 rows.
+- [shellsort_2609_analysis.md](shellsort_2609_analysis.md): comparison of all
+  five methods, distribution-dependent results, memory and stability tradeoffs,
+  statistical limits, and the scope of the Liu replication.
 
 All rows have `ok=1` and build ID `shell-paper-2609-fixed`. The Shellsort
 variants use zero tracked auxiliary heap; Powersort reports its merge buffer.
-Shellsort variants are unstable. Reproduce the
-primary profile, held-out grid, and 10m count check with:
+Shellsort variants are unstable. The learned sequence has mixed comparison
+results against Ciura/Tokuda and no general speed advantage. The 1m timing
+sample repeats only seed 1; the 10m grid is one-seed count-only data for the
+three Shellsort variants. See the analysis for the distinction between fewer
+comparisons, lower observed time, and zero tracked heap.
+
+Reproduce the primary profile, held-out grid, and 10m count check with:
 
 ```sh
 python3 scripts/run_bench.py --profile shellsort \
