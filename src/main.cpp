@@ -786,9 +786,12 @@ static bool selftest() {
             {"nearly1", 200000, 15}, {"runs32", 200000, 12},
             {"runs1024", 200000, 12}, {"runs1024", 1000000, 12},
             {"disp16", 200000, 16}, {"outpct11", 200000, 17},
+            {"outpct32", 200000, 12},
             {"random", 200000, 12}, {"sorted", 200000, 10},
             {"reversed", 200000, 10}, {"organpipe", 200000, 10},
-            {"tail10", 200000, 10}, {"equal", 200000, 17},
+            {"tail10", 200000, 10}, {"saw13", 200000, 12},
+            {"dup2", 200000, 12}, {"dup16", 200000, 12},
+            {"equal", 200000, 18},
         };
         size_t checks = 0, fails = 0;
         for (const GeneralRouteCase& tc : cases) {

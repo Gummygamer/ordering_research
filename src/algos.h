@@ -1773,8 +1773,32 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
     const double p_upper = 1.0 - std::sqrt(std::max(
         0.0, 1.0 - 2.0 * std::min(0.5, descent_rate + margin)));
 
+    if (equal_pairs == sample_pairs) {
+        const T& first = a[0];
+        bool all_equal = true;
+        uint64_t equality_scan_comps = 0;
+        for (size_t i = 1; i < n; ++i) {
+            ++equality_scan_comps;
+            if (cmp(a[i], first)) {
+                all_equal = false;
+                break;
+            }
+            ++equality_scan_comps;
+            if (cmp(first, a[i])) {
+                all_equal = false;
+                break;
+            }
+        }
+        g_gate_probe_comps += equality_scan_comps;
+        if (all_equal) {
+            g_gate_choice = 18;
+            return;
+        }
+    }
+
     bool descent_lefts_are_extreme = false;
-    if (total_descents > 0) {
+    size_t repeated_sample_values = 0;
+    if (descent_rate < 0.05 && total_descents > 0) {
         const size_t high_cut = (sampled_left_values.size() * 9) / 10;
         std::nth_element(sampled_left_values.begin(),
                          sampled_left_values.begin() +
@@ -1787,6 +1811,15 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         descent_lefts_are_extreme =
             extreme_descents * 2 >= total_descents;
     }
+    if (descent_rate >= 0.05 && descent_rate < 0.15) {
+        std::sort(sampled_left_values.begin(), sampled_left_values.end(), probe_cmp);
+        for (size_t i = 1; i < sampled_left_values.size(); ++i)
+            if (!probe_cmp(sampled_left_values[i - 1], sampled_left_values[i]))
+                ++repeated_sample_values;
+    }
+    const double sampled_duplicate_rate =
+        static_cast<double>(repeated_sample_values) /
+        static_cast<double>(sampled_left_values.size() - 1);
 
     auto run_powersort = [&]() {
         g_gate_choice = 10;
@@ -1819,6 +1852,11 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         run_quantile_route();
         return;
     }
+    if (equal_pairs * 100 > sample_pairs * 4 ||
+        sampled_duplicate_rate > 0.04) {
+        run_bl_quick();
+        return;
+    }
     if (run_adaptive_shape) {
         run_powersort();
         return;
@@ -1848,7 +1886,7 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         }
     }
 
-    if (p_upper >= 0.38) {
+    if (p_upper >= 0.32) {
         run_bl_quick();
         return;
     }
