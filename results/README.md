@@ -12,7 +12,7 @@
 - `ladder_v1_analysis.md`: algorithm, correctness, count, and runtime results.
 
 All rows have `ok=1`. The current paper is
-`../output/pdf/sorting_as_agent_research_v8.pdf`; version 1 is retained as
+`../output/pdf/sorting_as_agent_research_v9.pdf`; version 1 is retained as
 `../output/pdf/sorting_as_agent_research.pdf`.
 See `notes/research_notes.md` section 15 for the inference and host limitations.
 
@@ -44,7 +44,7 @@ was not fixed. The run-density paper follow-up is
 - `inversion_v4_analysis.md`: inversion model, route counts, runtime regret,
   and hardware limitations.
 
-The current paper is `../output/pdf/sorting_as_agent_research_v8.pdf`.
+The current paper is `../output/pdf/sorting_as_agent_research_v9.pdf`.
 
 ## Distance-to-monotonicity and displacement candidates (`backbone-v1`)
 
@@ -59,7 +59,27 @@ The current paper is `../output/pdf/sorting_as_agent_research_v8.pdf`.
   paired results, and limitations.
 
 All 21,384 rows passed output validation. The newest paper is
-`../output/pdf/sorting_as_agent_research_v8.pdf`.
+`../output/pdf/sorting_as_agent_research_v9.pdf`.
+
+## Stratified descent-density gate (`backbone-gate-v1`)
+
+- `deletion_backbone_gate_v1_counts.csv` and
+  `deletion_backbone_gate_v1.csv`: first training run, seeds 51--53.
+- `deletion_backbone_gate_v2_train_counts.csv` and
+  `deletion_backbone_gate_v2_train.csv`: frozen 12.5% threshold, same train
+  seeds, after correcting the initial threshold using training evidence.
+- `deletion_backbone_gate_heldout_v1.csv`: 12,672 validated fresh-seed rows
+  (576 counts and 12,096 timing rows), seeds 61--63.
+- `deletion_backbone_gate_analysis.md`: local descent model, routes, and
+  held-out regret analysis.
+
+The gate is close to the fastest baseline on the held-out 1--11% sparse
+extreme-key family (median regret +0.46%), but has +31.48% median regret at
+14--26% and +6.73% over the full grid. The near-threshold sample can select
+the wrong repair route, while the medium-density fallback is poorly matched
+to these inputs. Reproduce with `deletion-backbone-gate-v1` and
+`deletion-backbone-gate-heldout-v1`; see paper v9 for the mathematical model
+and scope limitations.
 
 ## Overflow routing follow-up (`backbone-route-v2`)
 
@@ -73,7 +93,7 @@ All 21,384 rows passed output validation. The newest paper is
   results, modern evaluation objective, and limits.
 
 All 11,880 rows have `ok=1`. The route-v2 study and modern performance
-methodology are included in `../output/pdf/sorting_as_agent_research_v8.pdf`.
+methodology are included in `../output/pdf/sorting_as_agent_research_v9.pdf`.
 
 ## Preserve-prefix fallback ablation (`backbone-preserve-v3`)
 
@@ -103,7 +123,7 @@ reference for `std::inplace_merge` complexity.
 All 15,840 rows have `ok=1`. Rotation merge reduced the measured dense-grid
 heap to about 0.75 MiB but had +4.37% median latency versus buffered preserve
 on paired 4--10% corruption cases. At 4% it used fewer comparisons and was
-still slightly slower. Paper v8 discusses why comparison count is diagnostic
+still slightly slower. Paper v9 discusses why comparison count is diagnostic
 for primitive in-memory keys while timing under a memory constraint is the
 appropriate objective for this host study.
 

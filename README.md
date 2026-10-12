@@ -484,7 +484,14 @@ constraints. See `results/deletion_backbone_analysis.md`,
 `results/deletion_backbone_preserve_v3_analysis.md`. The
 `deletion-backbone`, `deletion-backbone-density`,
 `deletion-backbone-density-heldout`, `deletion-backbone-route-v2`, and
-`deletion-backbone-preserve-v3` profiles reproduce the grids. The
+`deletion-backbone-preserve-v3` profiles reproduce the grids. A stratified
+adjacent-descent gate estimates sparse corruption density from 16 bins of
+sampled neighbors. It stays close to the best baseline on fresh 1--11%
+extreme-key inputs, but its frozen routing policy loses badly at 14--26% and
+on some ordinary controls; see `results/deletion_backbone_gate_analysis.md`
+and paper v9. Profiles `deletion-backbone-gate-v1` and
+`deletion-backbone-gate-heldout-v1` reproduce training seeds 51--53 and fresh
+seeds 61--63. The
 `deletion_backbone_rotate` variant replaces the last buffered merge with a
 rotation merge: it keeps peak heap near 0.75 MiB on dense outlier cases, but
 adds about 4.4% median latency against the buffered variant. At 4% corruption
