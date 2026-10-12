@@ -777,6 +777,40 @@ static bool selftest() {
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }
+    // Lock representative mathematical cues to intended portfolio branches:
+    // low adjacent disorder plus distance probes separate runs from near-sort,
+    // while large adjacent disorder and low gap inversions identify displacement.
+    {
+        struct GeneralRouteCase { const char* dist; size_t n; int choice; };
+        const GeneralRouteCase cases[] = {
+            {"nearly1", 200000, 15}, {"runs32", 200000, 12},
+            {"runs1024", 200000, 12}, {"runs1024", 1000000, 12},
+            {"disp16", 200000, 16}, {"outpct11", 200000, 17},
+            {"random", 200000, 12}, {"sorted", 200000, 10},
+            {"reversed", 200000, 10}, {"organpipe", 200000, 10},
+            {"tail10", 200000, 10}, {"equal", 200000, 17},
+        };
+        size_t checks = 0, fails = 0;
+        for (const GeneralRouteCase& tc : cases) {
+            std::vector<u64> result = gen_dist(tc.dist, tc.n, 17);
+            lab::g_comps = 0;
+            lab::hybrid_general_portfolio(
+                result.data(), tc.n, lab::Counting<lab::RawLess>{});
+            ++checks;
+            if (lab::g_gate_choice != tc.choice ||
+                lab::g_gate_probe_comps > lab::g_comps ||
+                !std::is_sorted(result.begin(), result.end())) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL general_route d=%s n=%zu choice=%d expect=%d\n",
+                      tc.dist, tc.n, lab::g_gate_choice, tc.choice);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "general_route",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
     // The inversion portfolio should use insertion only on low-disorder
     // perturbations and otherwise match one of the established runtime
     // branches, with every probe included in comparator accounting.
