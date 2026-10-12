@@ -18,7 +18,7 @@ from reportlab.platypus import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output/pdf/sorting_as_agent_research_v11.pdf"
+OUT = ROOT / "output/pdf/sorting_as_agent_research_v12.pdf"
 
 BLUE = colors.HexColor("#164E73")
 TEAL = colors.HexColor("#187C80")
@@ -68,6 +68,94 @@ descent_portfolio_train = read_csv("results/descent_portfolio_v1_train.csv")
 descent_portfolio_heldout = read_csv("results/descent_portfolio_v1_heldout.csv")
 quantile_backbone_train = read_csv("results/quantile_backbone_v1_train.csv")
 quantile_backbone_heldout = read_csv("results/quantile_backbone_v1_heldout.csv")
+general_portfolio_heldout = read_csv("results/general_portfolio_v16_heldout_1m.csv")
+GENERAL_PORTFOLIO_BASELINES = ("std_sort", "powersort", "bl_quick",
+                               "hybrid_inversion_gate", "hybrid_descent_portfolio",
+                               "hybrid_quantile_backbone")
+
+
+def general_portfolio_regrets(rows):
+    grouped = defaultdict(list)
+    for row in rows:
+        if row["mode"] == "time":
+            grouped[(row["dist"], int(row["seed"]), row["algo"])].append(
+                int(row["time_ns"]))
+    algorithms = {row["algo"] for row in rows}
+    baselines = algorithms - {"hybrid_general_portfolio"}
+    results = []
+    for dist, seed, algo in grouped:
+        if algo != "hybrid_general_portfolio":
+            continue
+        baseline_times = {
+            name: statistics.median(grouped[(dist, seed, name)])
+            for name in baselines
+        }
+        candidate = statistics.median(grouped[(dist, seed, algo)])
+        best_algo = min(baseline_times, key=baseline_times.get)
+        best = baseline_times[best_algo]
+        results.append({"dist": dist, "seed": seed,
+                        "regret": 100 * (candidate / best - 1),
+                        "candidate_ns": candidate, "best_ns": best,
+                        "best_algo": best_algo})
+    return results
+
+
+def general_portfolio_time(algo, dist):
+    by_seed = defaultdict(list)
+    for row in general_portfolio_heldout:
+        if row["mode"] == "time" and row["algo"] == algo and row["dist"] == dist:
+            by_seed[int(row["seed"])].append(int(row["time_ns"]))
+    seed_medians = [statistics.median(v) for v in by_seed.values()]
+    return statistics.median(seed_medians) / general_portfolio_n if seed_medians else 0.0
+
+
+def general_portfolio_best_baseline(dist):
+    return min(GENERAL_PORTFOLIO_BASELINES,
+               key=lambda algo: general_portfolio_time(algo, dist))
+
+
+general_portfolio_case_regrets = general_portfolio_regrets(general_portfolio_heldout)
+general_portfolio_n = int(general_portfolio_heldout[0]["n"])
+general_portfolio_valid = all(row["ok"] == "1" and
+                              row["build_id"] == "general-portfolio-v16"
+                              for row in general_portfolio_heldout)
+general_portfolio_time_rows = sum(row["mode"] == "time"
+                                  for row in general_portfolio_heldout)
+general_portfolio_count_rows = sum(row["mode"] == "count"
+                                   for row in general_portfolio_heldout)
+general_portfolio_regret_values = [row["regret"]
+                                   for row in general_portfolio_case_regrets]
+general_portfolio_p95 = sorted(general_portfolio_regret_values)[
+    int(0.95 * (len(general_portfolio_regret_values) - 1))]
+general_portfolio_worst = max(general_portfolio_case_regrets,
+                              key=lambda row: row["regret"])
+
+general_portfolio_families = {
+    "Random": {"random"},
+    "Shuffled runs": {"runs32", "runs1024"},
+    "Ordered / near": {"sorted", "reversed", "nearly1", "organpipe", "tail10"},
+    "Displacement": {"disp4", "disp16", "disp64", "disp256"},
+    "Duplicates": {"dup2", "dup16", "dup256", "equal"},
+    "Scattered outliers": {f"outpct{p}" for p in (1, 5, 7, 9, 11, 14, 18, 22, 26, 36)},
+    "Sawtooth": {"saw13"},
+}
+general_portfolio_family_stats = {}
+for family, distributions in general_portfolio_families.items():
+    values = [row["regret"] for row in general_portfolio_case_regrets
+              if row["dist"] in distributions]
+    general_portfolio_family_stats[family] = values
+
+general_portfolio_heap_max = max(
+    int(row["heap_aux_bytes"]) for row in general_portfolio_heldout
+    if row["mode"] == "count" and row["algo"] == "hybrid_general_portfolio")
+general_portfolio_heap_median = statistics.median(
+    int(row["heap_aux_bytes"]) for row in general_portfolio_heldout
+    if row["mode"] == "count" and row["algo"] == "hybrid_general_portfolio")
+
+if (not general_portfolio_valid or len(general_portfolio_case_regrets) != 81 or
+        general_portfolio_count_rows != 567 or general_portfolio_time_rows != 11907 or
+        sum(map(len, general_portfolio_family_stats.values())) != 81):
+    raise ValueError("v16 held-out data failed expected validation or shape checks")
 
 
 def gate_regrets(rows, distributions):
@@ -422,9 +510,9 @@ story += [Spacer(1, 0.30*inch),
             "Subtitle"),
           HRFlowable(width="100%", thickness=2, color=TEAL, spaceAfter=16),
           P("Abstract", "H2Blue"),
-          P("Sorting is unusually tractable for agent-guided algorithm research: candidate programs have a crisp ordering contract, exact output verification is cheap, and inputs expose measurable structure such as runs, duplicates, inversions, and positional disorder. Those properties support a closed loop of hypothesis, implementation, oracle check, and held-out benchmark. They do not make comparison count a sufficient performance objective. We synthesize run-adaptive Powersort/Ford-Johnson results with learning-augmented sorting and AI-discovered routines, then study displacement-aware portfolios and deletion-backbone repair. A stratified descent-density model predicts the exceptional-key fraction p from adjacent descents, d=p-p²/2. A first gate stayed near baseline on held-out 1--11% corruption but lost badly at 14--26%. A sequential interval portfolio adds adaptive sampling and a Powersort middle regime: on fresh 14--26% cases it reduces median regret from +31.48% to -0.64%, while keeping full-grid median regret at +2.67% over 96 matched cases. This process shows why sorting suits agentic search and why policies need frozen thresholds, target-machine latency, and independent evaluation.", "Abstract"),
+          P("Sorting is unusually tractable for agent-guided algorithm research: candidate programs have a crisp ordering contract, exact output verification is cheap, and inputs expose measurable structure such as runs, duplicates, inversions, and positional disorder. Those properties support a closed loop of hypothesis, implementation, oracle check, and held-out benchmark, but do not make comparison count a sufficient performance objective. We synthesize run-adaptive and learned sorting research with experiments on displacement-aware portfolios and deletion-backbone repair. A new general portfolio routes among established sorters using stratified adjacent-pair samples, multi-gap inversion probes, duplicate evidence, and shape checks. On 81 fresh workload/seed cases it has +1.33% median latency regret against the fastest of six baselines and stays within 5% in 57 cases; its nearest-rank 95th-percentile regret is +18.06%, with a +79.65% worst case. It is a promising low-regret candidate, not a universal speed winner. These findings show why sorting suits agentic search and why frozen policies must be judged by target-machine latency and workload robustness.", "Abstract"),
           Spacer(1, 5)]
-key = Table([[P("MAIN RESULT", "TableHead"), P("The ladder lowers random-input comparisons from 18.5990 to 18.5275 per element, yet measures 135.97 ns/element versus 74.92 for Powersort and 57.64 for std::sort. Less work in the comparison model did not mean less elapsed time.", "BodyResearch")]], colWidths=[1.15*inch, 5.75*inch])
+key = Table([[P("LATEST RESULT", "TableHead"), P("The general portfolio has +1.33% median regret over 81 fresh workload/seed cases and stays within 5% of the fastest standalone sorter in 57 cases. Tail losses remain material: +18.06% at the nearest-rank 95th percentile and +79.65% worst case.", "BodyResearch")]], colWidths=[1.15*inch, 5.75*inch])
 key.setStyle(TableStyle([("BACKGROUND", (0,0), (0,0), TEAL), ("BACKGROUND", (1,0), (1,0), PALE_TEAL), ("VALIGN",(0,0),(-1,-1),"MIDDLE"), ("BOX",(0,0),(-1,-1),0.5,TEAL), ("LEFTPADDING",(0,0),(-1,-1),9), ("RIGHTPADDING",(0,0),(-1,-1),9), ("TOPPADDING",(0,0),(-1,-1),9), ("BOTTOMPADDING",(0,0),(-1,-1),9)]))
 story += [key, Spacer(1, 10),
           P("Research scope", "H2Blue"),
@@ -744,6 +832,32 @@ story += [P(f"On the 1m count grid, the gate selected insertion in {scale_routes
           P(f"This outcome illustrates why modern evaluation should lead with elapsed time and disclose memory, with comparison counts as a secondary diagnostic. At n=1m and 5% corruption, quantile peeling uses {quantile_count_mean('hybrid_quantile_backbone', 'outpct5', 1_000_000):.2f} comparisons per item versus {quantile_count_mean('hybrid_descent_portfolio', 'outpct5', 1_000_000):.2f} for the previous portfolio; the latency gap is much larger than that count gap suggests. Element writes, cache misses, branch misses, and energy were not measured, so they remain plausible cost explanations rather than findings. Future work should add hardware counters, larger and non-integer records, adversarial pivots, and a route that cheaply recognizes ordered controls before quantile sampling.", "BodyResearch"),
           P("Reproducibility", "H1Blue"),
           P("Run <tt>./build/sortlab selftest</tt>. Reproduce these data with <tt>quantile-backbone-train-v1</tt> (seeds 111--113) and <tt>quantile-backbone-heldout-v1</tt> (seeds 121--123). Both grids use sizes 200,000 and 1,000,000, 21 interleaved timing repetitions, and CPU 2. The new implementation passed 10 route/correctness cases inside the sorting self-test; all benchmark rows passed output validation. CPU frequency varied under powersave, so small differences should not be overinterpreted.", "BodyResearch"),
+          PageBreak(), P("17. A general portfolio across input structure", "H1Blue"),
+          P("The latest candidate treats sorting as a routing problem over established implementations. For n<131,072 it delegates to std::sort. At larger sizes it samples adjacent pairs inside 16 positional bins, retaining sample values and the distribution of descents. Sparse or spatially concentrated descents trigger two positional-gap probes (n/32 and n/8) to distinguish shuffled sorted blocks from smooth or nearly ordered structure. Sampled equality and cardinality provide duplicate evidence; a 64-position inversion probe separates short-range displacement from broad disorder. Depending on these signals, the policy calls Powersort, branchless quicksort, the inversion gate, the descent portfolio, or quantile-backbone repair. The quantile branch verifies its sorted-backbone certificate and falls back when it fails. These signals motivate a deterministic policy; they do not prove the input belongs to the synthetic family suggested by the sample.", "BodyResearch"),
+          P(f"The frozen v16 policy was evaluated on a fresh n=1,000,000 grid: 27 distributions × three held-out seeds (171--173) × seven algorithms, with 21 uninstrumented timing repetitions per algorithm and case. The CSV has {len(general_portfolio_heldout):,} rows ({general_portfolio_count_rows:,} count-mode and {general_portfolio_time_rows:,} timing rows); all rows have successful output validation and build identifier general-portfolio-v16. Each time is reduced to a median within seed. Regret compares that candidate median against the fastest of six standalone baselines on the same distribution and seed, then aggregates the 81 matched cases. The nearest-rank 95th percentile is reported below using the lower-index empirical order statistic.", "BodyResearch"),
+          KeepTogether([table([[cell(x, True) for x in ["Workload family", "Cases", "Median regret", "Mean regret", "Within 5%"]]] + [[cell(x) for x in [
+              family, str(len(values)), f"{statistics.median(values):+.2f}%",
+              f"{statistics.mean(values):+.2f}%",
+              f"{sum(v <= 5 for v in values)}/{len(values)}"]]
+              for family, values in general_portfolio_family_stats.items()],
+              [1.50*inch, 0.58*inch, 1.08*inch, 1.05*inch, 0.92*inch], font=6.8, pad=3),
+                        Spacer(1, 4), P("Table 11. Per-case regret is against the fastest standalone baseline; lower is better. Negative values are wins. Families partition all 81 held-out cases.", "SmallResearch")]),
+          P(f"Overall median regret is {statistics.median(general_portfolio_regret_values):+.2f}%, mean regret is {statistics.mean(general_portfolio_regret_values):+.2f}%, and {sum(v <= 0 for v in general_portfolio_regret_values)}/{len(general_portfolio_regret_values)} cases are wins or ties. {sum(v <= 5 for v in general_portfolio_regret_values)} cases are within 5%; the nearest-rank 95th percentile is {general_portfolio_p95:+.2f}%. The worst case is {general_portfolio_worst['dist']} on seed {general_portfolio_worst['seed']} at {general_portfolio_worst['regret']:+.2f}%. The portfolio is broadly competitive in this grid, but cannot guarantee a small loss on an unseen workload.", "BodyResearch"),
+          KeepTogether([table([[cell(x, True) for x in ["Input", "Portfolio", "Fastest baseline", "Baseline", "Regret"]]] + [[cell(x) for x in row] for row in [
+              [{"random": "Random", "runs32": "Runs 32", "nearly1": "Nearly sorted",
+                "disp16": "disp16", "outpct5": "5% outliers", "dup16": "dup16",
+                "saw13": "saw13"}[dist], f"{general_portfolio_time('hybrid_general_portfolio', dist):.2f}",
+               {"std_sort": "std::sort", "powersort": "Powersort", "bl_quick": "Branchless quicksort",
+                "hybrid_inversion_gate": "Inversion gate", "hybrid_descent_portfolio": "Descent portfolio",
+                "hybrid_quantile_backbone": "Quantile backbone"}[general_portfolio_best_baseline(dist)],
+               f"{general_portfolio_time(general_portfolio_best_baseline(dist), dist):.2f}",
+               f"{statistics.median(x['regret'] for x in general_portfolio_case_regrets if x['dist'] == dist):+.2f}%"]
+              for dist in ("random", "runs32", "nearly1", "disp16", "outpct5", "dup16", "saw13")]],
+              [0.88*inch, 0.94*inch, 1.55*inch, 0.94*inch, 0.82*inch], font=6.5, pad=2.5),
+                        Spacer(1, 4), P("Table 12. Representative workload latency in ns/element. Each column aggregates the three seed-level medians; the regret column instead compares the candidate to the fastest baseline separately within each seed.", "SmallResearch")]),
+          P(f"Tracked auxiliary heap peaks at {general_portfolio_heap_max / (1024*1024):.2f} MiB and has a median of {general_portfolio_heap_median / 1024:.1f} KiB in the instrumented count runs. Comparison totals are recorded in those separate runs as diagnostics; timing claims come only from uninstrumented runs. The host used a powersave governor without a fixed frequency, so small gaps and individual outliers are noisy. Hardware counters, bytes moved, energy, and non-integer record types were not measured. The especially large saw13 and disp16 losses merit more seeds and targeted diagnosis before changing the frozen selector.", "BodyResearch"),
+          P("Reproducibility", "H2Blue"),
+          P("Run <tt>./build/sortlab selftest</tt>; v16 includes 21 general-portfolio correctness cases and 16 exact-route/accounting checks. The held-out artifact is <tt>general_portfolio_v16_heldout_1m.csv</tt>; it records three fresh seeds, seven algorithms, and 21 timing repetitions per case. The source build identifier is <tt>general-portfolio-v16</tt>. Timings are local to the compiler, CPU, standard library, integer keys, and generated workloads in this repository.", "BodyResearch"),
           Spacer(1, 9), P("References", "H1Blue")]
 
 refs = [
@@ -755,7 +869,7 @@ refs = [
     '[6] B. Jin and A. Z. Xu. “Straightforward Entropy-Sensitive Mergesort.” <link href="https://arxiv.org/abs/2608.10421" color="#187C80">arXiv:2608.10421</link> (2026).',
     '[7] B. Liu. “A New Gap Sequence for Shellsort: RL-Driven Algorithm Discovery Beyond N^(4/3).” <link href="https://arxiv.org/abs/2609.29881" color="#187C80">arXiv:2609.29881</link> (2026).',
     '[8] A. H. Jalilvand et al. “Sorting it out in Hardware: A State-of-the-Art Survey.” <link href="https://arxiv.org/abs/2310.07903" color="#187C80">arXiv:2310.07903</link> (2023).',
-    '[9] Ordering Research Lab. “Comparison sorting and adaptive merging: research notes and benchmark data.” Local C++20 study, builds <tt>ladder-v1</tt>, <tt>rungate-v1</tt>, <tt>inv-v4</tt>, <tt>backbone-v1</tt>, <tt>backbone-route-v2</tt>, <tt>backbone-preserve-v3</tt>, <tt>backbone-rotate-v4</tt>, and <tt>backbone-gate-v1</tt>; raw CSVs and source are included with this paper in the repository.',
+    '[9] Ordering Research Lab. “Comparison sorting and adaptive merging: research notes and benchmark data.” Local C++20 study, builds <tt>ladder-v1</tt>, <tt>rungate-v1</tt>, <tt>inv-v4</tt>, <tt>backbone-v1</tt>, <tt>backbone-route-v2</tt>, <tt>backbone-preserve-v3</tt>, <tt>backbone-rotate-v4</tt>, <tt>backbone-gate-v1</tt>, and <tt>general-portfolio-v16</tt>; raw CSVs and source are included with this paper in the repository.',
     '[10] A. Elmasry. “Counting Inversions Adaptively.” <link href="https://arxiv.org/abs/1503.01192" color="#187C80">arXiv:1503.01192</link> (2015).',
     '[11] A. Elmasry and A. Hammad. “Inversion-Sensitive Sorting Algorithms in Practice.” <i>ACM Journal of Experimental Algorithmics</i> 13, 1.11 (2008). <link href="https://doi.org/10.1145/1412228.1455267" color="#187C80">doi:10.1145/1412228.1455267</link>.',
     '[12] M. Saks and C. Seshadhri. “Space Efficient Streaming Algorithms for the Distance to Monotonicity and Asymmetric Edit Distance.” In <i>Proc. SODA 2013</i>, 1698-1709. <link href="https://doi.org/10.1137/1.9781611973105.122" color="#187C80">doi:10.1137/1.9781611973105.122</link>.',
@@ -767,7 +881,7 @@ refs = [
 for ref in refs:
     story.append(P(ref, "Ref"))
 story += [Spacer(1, 7), HRFlowable(width="100%", thickness=0.7, color=colors.HexColor("#D7E1E7")),
-          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), the first descent-gate holdout (576/12,096), sequential descent-portfolio training/heldout grids (798/16,758 and 672/14,112), and quantile-backbone training/heldout grids (912/19,152 and 768/16,128). Every count/timing row passed output validation.", "SmallResearch")]
+          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), the first descent-gate holdout (576/12,096), sequential descent-portfolio training/heldout grids (798/16,758 and 672/14,112), quantile-backbone training/heldout grids (912/19,152 and 768/16,128), and the general-portfolio v16 held-out grid (567 count rows and 11,907 timing rows). Every reported row passed output validation.", "SmallResearch")]
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 PaperDoc(str(OUT)).build(story)
