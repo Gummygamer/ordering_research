@@ -12,7 +12,7 @@
 - `ladder_v1_analysis.md`: algorithm, correctness, count, and runtime results.
 
 All rows have `ok=1`. The current paper is
-`../output/pdf/sorting_as_agent_research_v9.pdf`; version 1 is retained as
+`../output/pdf/sorting_as_agent_research_v10.pdf`; version 1 is retained as
 `../output/pdf/sorting_as_agent_research.pdf`.
 See `notes/research_notes.md` section 15 for the inference and host limitations.
 
@@ -44,7 +44,7 @@ was not fixed. The run-density paper follow-up is
 - `inversion_v4_analysis.md`: inversion model, route counts, runtime regret,
   and hardware limitations.
 
-The current paper is `../output/pdf/sorting_as_agent_research_v9.pdf`.
+The current paper is `../output/pdf/sorting_as_agent_research_v10.pdf`.
 
 ## Distance-to-monotonicity and displacement candidates (`backbone-v1`)
 
@@ -59,7 +59,7 @@ The current paper is `../output/pdf/sorting_as_agent_research_v9.pdf`.
   paired results, and limitations.
 
 All 21,384 rows passed output validation. The newest paper is
-`../output/pdf/sorting_as_agent_research_v9.pdf`.
+`../output/pdf/sorting_as_agent_research_v10.pdf`.
 
 ## Stratified descent-density gate (`backbone-gate-v1`)
 
@@ -75,11 +75,26 @@ All 21,384 rows passed output validation. The newest paper is
 
 The gate is close to the fastest baseline on the held-out 1--11% sparse
 extreme-key family (median regret +0.46%), but has +31.48% median regret at
-14--26% and +6.73% over the full grid. The near-threshold sample can select
+14--26% and +6.73% over 96 matched cases. The near-threshold sample can select
 the wrong repair route, while the medium-density fallback is poorly matched
 to these inputs. Reproduce with `deletion-backbone-gate-v1` and
-`deletion-backbone-gate-heldout-v1`; see paper v9 for the mathematical model
+`deletion-backbone-gate-heldout-v1`; see paper v10 for the mathematical model
 and scope limitations.
+
+## Sequential descent-density portfolio (`descent-portfolio-v1`)
+
+- `descent_portfolio_v1_train.csv`: 798 count and 16,758 timing rows on seeds
+  71--73; 19 distributions, two sizes, seven algorithms.
+- `descent_portfolio_v1_heldout.csv`: 672 count and 14,112 timing rows on
+  fresh seeds 81--83, including held-out corruption rates.
+- `descent_portfolio_v1_analysis.md`: density inversion, adaptive sampling,
+  exact routes, and matched-case latency regret.
+
+All rows passed output validation. The new policy reduces median regret from
++31.48% to -0.64% on held-out 14--26% corruption, while full-grid median
+regret is +2.67% over 96 matched cases. Reproduce with
+`descent-portfolio-train-v1` and `descent-portfolio-heldout-v1`; thresholds
+are frozen in the implementation and described in paper v10.
 
 ## Overflow routing follow-up (`backbone-route-v2`)
 
@@ -93,7 +108,7 @@ and scope limitations.
   results, modern evaluation objective, and limits.
 
 All 11,880 rows have `ok=1`. The route-v2 study and modern performance
-methodology are included in `../output/pdf/sorting_as_agent_research_v9.pdf`.
+methodology are included in `../output/pdf/sorting_as_agent_research_v10.pdf`.
 
 ## Preserve-prefix fallback ablation (`backbone-preserve-v3`)
 
@@ -123,7 +138,7 @@ reference for `std::inplace_merge` complexity.
 All 15,840 rows have `ok=1`. Rotation merge reduced the measured dense-grid
 heap to about 0.75 MiB but had +4.37% median latency versus buffered preserve
 on paired 4--10% corruption cases. At 4% it used fewer comparisons and was
-still slightly slower. Paper v9 discusses why comparison count is diagnostic
+still slightly slower. Paper v10 discusses why comparison count is diagnostic
 for primitive in-memory keys while timing under a memory constraint is the
 appropriate objective for this host study.
 

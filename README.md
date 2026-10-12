@@ -488,8 +488,11 @@ constraints. See `results/deletion_backbone_analysis.md`,
 adjacent-descent gate estimates sparse corruption density from 16 bins of
 sampled neighbors. It stays close to the best baseline on fresh 1--11%
 extreme-key inputs, but its frozen routing policy loses badly at 14--26% and
-on some ordinary controls; see `results/deletion_backbone_gate_analysis.md`
-and paper v9. Profiles `deletion-backbone-gate-v1` and
+on some ordinary controls. A sequential variant samples more near uncertain
+boundaries and routes medium corruption to Powersort; on held-out 14--26%
+cases its median regret is -0.64%, and its median regret over 96 workload
+cases is +2.67%. See `results/descent_portfolio_v1_analysis.md` and paper v10.
+Profiles `deletion-backbone-gate-v1` and
 `deletion-backbone-gate-heldout-v1` reproduce training seeds 51--53 and fresh
 seeds 61--63. The
 `deletion_backbone_rotate` variant replaces the last buffered merge with a

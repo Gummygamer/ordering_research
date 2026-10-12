@@ -45,7 +45,11 @@ files are `results/deletion_backbone_gate_v2_train_counts.csv` and
 | 14--26% corruption (rates 14, 18, 22, 26) | 24 | +31.48% | +33.58% | 0/24 | +58.68% |
 | 36% corruption | 6 | +6.27% | +9.52% | 2/6 | +22.91% |
 | Ordinary controls | 36 | +5.95% | +7.43% | 17/36 | +49.31% |
-| Full grid | 576 | +6.73% | +12.08% | 246/576 | +58.68% |
+| Full grid | 96 | +6.73% | +12.08% | 41/96 | +58.68% |
+
+The 96 matched workload cases are 16 distributions × two sizes × three seeds.
+The 576 count rows and 12,096 timing rows include one row group per algorithm
+and repetition; they are not 576 independent regret cases.
 
 At n=1m, the gate median is 2.38 ns/element at 1%, 7.64 at 5%, 11.87 at 7%,
 13.72 at 9%, and 15.17 at 11%. These are within 0.6--2.5% of the direct

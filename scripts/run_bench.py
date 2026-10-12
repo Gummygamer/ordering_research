@@ -165,6 +165,9 @@ BACKBONE_GATE_ALGORITHMS = (
     "std_sort", "powersort", "hybrid_run_gate", "hybrid_inversion_gate",
     "deletion_backbone_preserve", "hybrid_backbone_gate",
 )
+BACKBONE_DESCENT_PORTFOLIO_ALGORITHMS = BACKBONE_GATE_ALGORITHMS + (
+    "hybrid_descent_portfolio",
+)
 
 PROFILES = {
     # Liu's learned and finite-prefix-tuned Shellsort sequence (arXiv:2609.29881)
@@ -595,6 +598,36 @@ PROFILES = {
         ),
         count_seeds=(61, 62, 63),
         time_seeds=(61, 62, 63),
+    ),
+    # Train a sequential confidence-interval router on the existing density
+    # grid, then evaluate frozen boundaries on fresh seeds and off-grid rates.
+    "descent-portfolio-train-v1": Profile(
+        grids=(
+            Grid(
+                BACKBONE_DESCENT_PORTFOLIO_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40)) +
+                ("sorted", "reversed", "tail10", "disp16", "random"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(71, 72, 73),
+        time_seeds=(71, 72, 73),
+    ),
+    "descent-portfolio-heldout-v1": Profile(
+        grids=(
+            Grid(
+                BACKBONE_DESCENT_PORTFOLIO_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 5, 7, 9, 11, 14, 18, 22, 26, 36)) +
+                ("sorted", "reversed", "tail10", "disp16", "random", "dup16"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(81, 82, 83),
+        time_seeds=(81, 82, 83),
     ),
     # Duplicate-cardinality response of large-FJ blocks: the gate portfolio
     # across a dyadic dupK sweep at n=1m, anchored by dup16/dup256 identities

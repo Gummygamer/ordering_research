@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -886,7 +887,7 @@ void hybrid_fj_auto(T* a, size_t n, C cmp) {
 
 // Telemetry for selftest accounting; the benchmark CSV schema is unchanged.
 extern uint64_t g_gate_probe_comps;  // comparator calls spent probing
-extern int g_gate_choice;            // 0 small-n PFJ, 1 vetoed PFJ, 2 auto2048
+extern int g_gate_choice;            // branch selected by the active hybrid gate
 
 // The displacement grid (results/displaw_1c32397_analysis.md) gave sharp
 // sampled crossovers: auto2048 wins random permutations and disp>=1024 by up
@@ -1389,6 +1390,122 @@ void hybrid_backbone_gate(T* a, size_t n, C cmp) {
     } else {
         g_gate_choice = 12;
         std::sort(a, a + n, cmp);
+    }
+}
+
+// Sequential descent-density portfolio. The outpct model has expected
+// descent density d=p-p^2/2, so invert it to estimate corruption fraction
+// p=1-sqrt(1-2d). A normal interval avoids committing to a route near either
+// boundary: sparse corruption uses the deletion-backbone repair, medium
+// corruption uses Powersort, and broad disorder uses std::sort. Sampling is
+// stratified by position and doubles only while an uncertainty interval
+// overlaps a route boundary. The low-run/activity check keeps localized
+// disorder (for example, a random tail) on Powersort.
+template <class T, class C>
+void hybrid_descent_portfolio(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    constexpr size_t BINS = 16;
+    constexpr size_t INITIAL_PER_BIN = 64;
+    constexpr size_t MAX_PER_BIN = 512;
+    constexpr size_t MONOTONE_PERMILLE = 20;
+    constexpr double SPARSE_P = 0.125;
+    constexpr double BROAD_P = 0.45;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+
+    std::mt19937_64 rng(0xD35C3A71ULL);
+    std::array<size_t, BINS> ascents{};
+    std::array<size_t, BINS> descents{};
+    size_t per_bin = 0;
+    double descent_rate = 0.0;
+    double p_lower = 0.0;
+    double p_upper = 1.0;
+    size_t active_bins = 0;
+    size_t low_run_bins = 0;
+    bool localized_or_monotone = false;
+
+    for (size_t target = INITIAL_PER_BIN; target <= MAX_PER_BIN; target *= 2) {
+        for (size_t bin = 0; bin < BINS; ++bin) {
+            const size_t lo = bin * n / BINS;
+            const size_t hi = (bin + 1) * n / BINS;
+            const size_t span = hi - lo;
+            for (size_t trial = per_bin; trial < target; ++trial) {
+                const size_t i = lo + static_cast<size_t>(rng() % (span - 1));
+                ++g_gate_probe_comps;
+                if (cmp(a[i + 1], a[i])) {
+                    ++descents[bin];
+                } else {
+                    ++g_gate_probe_comps;
+                    if (cmp(a[i], a[i + 1])) ++ascents[bin];
+                }
+            }
+        }
+        per_bin = target;
+        size_t total_ascents = 0;
+        size_t total_descents = 0;
+        active_bins = 0;
+        low_run_bins = 0;
+        size_t low_ascending_bins = 0;
+        for (size_t bin = 0; bin < BINS; ++bin) {
+            total_ascents += ascents[bin];
+            total_descents += descents[bin];
+            if (descents[bin] != 0) ++active_bins;
+            if (ascents[bin] * 1000 <= MONOTONE_PERMILLE * per_bin ||
+                descents[bin] * 1000 <= MONOTONE_PERMILLE * per_bin)
+                ++low_run_bins;
+            if (ascents[bin] * 1000 <= MONOTONE_PERMILLE * per_bin)
+                ++low_ascending_bins;
+        }
+
+        const size_t samples = BINS * per_bin;
+        descent_rate = static_cast<double>(total_descents) / samples;
+        const double margin = 1.96 * std::sqrt(
+            descent_rate * (1.0 - descent_rate) / samples) + 1.0 / samples;
+        const double d_lower = std::max(0.0, descent_rate - margin);
+        const double d_upper = std::min(0.5, descent_rate + margin);
+        auto invert_density = [](double d) {
+            return 1.0 - std::sqrt(std::max(0.0, 1.0 - 2.0 * d));
+        };
+        p_lower = invert_density(d_lower);
+        p_upper = invert_density(d_upper);
+
+        // Sorted, reversed, and localized-tail inputs have many low-run bins
+        // but do not have the distributed nonzero descents of outpct inputs.
+        localized_or_monotone = low_run_bins >= 13 &&
+            (active_bins < 4 || low_ascending_bins >= 13);
+        if (localized_or_monotone) break;
+
+        const bool sparse_route = active_bins >= 4 && p_upper < SPARSE_P;
+        const bool powersort_route = p_lower > SPARSE_P && p_upper < BROAD_P;
+        const bool std_route = p_lower >= BROAD_P;
+        if (sparse_route || powersort_route || std_route) break;
+    }
+
+    if (localized_or_monotone) {
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+    } else if (active_bins >= 4 && p_upper < SPARSE_P) {
+        g_gate_choice = 11;
+        deletion_backbone_preserve_sort(a, n, cmp);
+    } else if (p_lower > SPARSE_P && p_upper < BROAD_P) {
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+    } else {
+        // At the sample cap, route ambiguous cases by the point estimate but
+        // require a separated interval before choosing the specialized path.
+        const double p_hat = 1.0 - std::sqrt(
+            std::max(0.0, 1.0 - 2.0 * descent_rate));
+        if (p_hat >= BROAD_P) {
+            g_gate_choice = 12;
+            std::sort(a, a + n, cmp);
+        } else {
+            g_gate_choice = 10;
+            powersort(a, n, cmp);
+        }
     }
 }
 

@@ -18,7 +18,7 @@ from reportlab.platypus import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output/pdf/sorting_as_agent_research_v9.pdf"
+OUT = ROOT / "output/pdf/sorting_as_agent_research_v10.pdf"
 
 BLUE = colors.HexColor("#164E73")
 TEAL = colors.HexColor("#187C80")
@@ -64,6 +64,8 @@ backbone_rotate_times = read_csv("results/deletion_backbone_rotate_v4.csv")
 backbone_rotate_counts = read_csv("results/deletion_backbone_rotate_v4_counts.csv")
 backbone_gate_train = read_csv("results/deletion_backbone_gate_v2_train.csv")
 backbone_gate_heldout = read_csv("results/deletion_backbone_gate_heldout_v1.csv")
+descent_portfolio_train = read_csv("results/descent_portfolio_v1_train.csv")
+descent_portfolio_heldout = read_csv("results/descent_portfolio_v1_heldout.csv")
 
 
 def gate_regrets(rows, distributions):
@@ -93,11 +95,46 @@ def heldout_gate_time_median(algo, dist, n):
     return statistics.median(statistics.median(values) for values in by_seed.values())
 
 
+def descent_regrets(rows, distributions):
+    grouped = defaultdict(list)
+    for row in rows:
+        if row["mode"] == "time":
+            grouped[(row["dist"], int(row["n"]), int(row["seed"]), row["algo"])].append(
+                int(row["time_ns"]) / int(row["n"]))
+    baselines = ("std_sort", "powersort", "hybrid_run_gate", "hybrid_inversion_gate",
+                 "deletion_backbone_preserve", "hybrid_backbone_gate")
+    out = []
+    for dist, n, seed, algo in grouped:
+        if algo != "hybrid_descent_portfolio" or dist not in distributions:
+            continue
+        best = min(statistics.median(grouped[(dist, n, seed, name)]) for name in baselines)
+        candidate = statistics.median(grouped[(dist, n, seed, algo)])
+        out.append((dist, n, seed, 100 * (candidate / best - 1)))
+    return out
+
+
+def descent_time_median(algo, dist, n):
+    by_seed = defaultdict(list)
+    for row in descent_portfolio_heldout:
+        if (row["mode"] == "time" and row["algo"] == algo and row["dist"] == dist
+                and int(row["n"]) == n):
+            by_seed[int(row["seed"])].append(int(row["time_ns"]) / n)
+    return statistics.median(statistics.median(values) for values in by_seed.values())
+
+
 gate_sparse_regrets = gate_regrets(
     backbone_gate_heldout, {f"outpct{p}" for p in (1, 5, 7, 9, 11)})
 gate_mid_regrets = gate_regrets(
     backbone_gate_heldout, {f"outpct{p}" for p in (14, 18, 22, 26)})
 gate_all_regrets = gate_regrets(backbone_gate_heldout, {
+    "outpct1", "outpct5", "outpct7", "outpct9", "outpct11", "outpct14",
+    "outpct18", "outpct22", "outpct26", "outpct36", "sorted", "reversed",
+    "tail10", "disp16", "dup16", "random"})
+descent_sparse_regrets = descent_regrets(
+    descent_portfolio_heldout, {f"outpct{p}" for p in (1, 5, 7, 9, 11)})
+descent_mid_regrets = descent_regrets(
+    descent_portfolio_heldout, {f"outpct{p}" for p in (14, 18, 22, 26)})
+descent_all_regrets = descent_regrets(descent_portfolio_heldout, {
     "outpct1", "outpct5", "outpct7", "outpct9", "outpct11", "outpct14",
     "outpct18", "outpct22", "outpct26", "outpct36", "sorted", "reversed",
     "tail10", "disp16", "dup16", "random"})
@@ -278,14 +315,14 @@ def P(text, style="BodyResearch"):
     return Paragraph(text, styles[style])
 
 
-def table(data, widths, font=7.2, header=True):
+def table(data, widths, font=7.2, header=True, pad=5):
     t = Table(data, colWidths=widths, repeatRows=1 if header else 0, hAlign="LEFT")
     cmds = [
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), pad),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D7E1E7")),
         ("ROWBACKGROUNDS", (0, 1 if header else 0), (-1, -1), [colors.white, PALE]),
     ]
@@ -330,7 +367,7 @@ story += [Spacer(1, 0.30*inch),
             "Subtitle"),
           HRFlowable(width="100%", thickness=2, color=TEAL, spaceAfter=16),
           P("Abstract", "H2Blue"),
-          P("Sorting is unusually tractable for agent-guided algorithm research: candidate programs have a crisp ordering contract, exact output verification is cheap, and the input exposes measurable structure such as natural runs, duplicate cardinality, inversions, and positional disorder. Those properties support a closed loop of hypothesis, implementation, oracle check, and held-out benchmark. They do not make comparison count a sufficient performance objective. We synthesize run-adaptive Powersort/Ford-Johnson results with learning-augmented sorting and AI-discovered routines, then study displacement-aware portfolios and deletion-backbone repair. A new stratified adjacent-descent gate samples 1,024 neighboring pairs across 16 input regions and selects among the repair algorithm, Powersort, and <tt>std::sort</tt>. On held-out 1--11% extreme-key corruption it stays within a median 0.5% of the fastest tested baseline; around 14--26%, sampling noise and fallback choice cause large losses. This split result shows both why sorting suits agentic search and why it needs frozen policies, explicit workload domains, latency-first scoring, and independent held-out tests.", "Abstract"),
+          P("Sorting is unusually tractable for agent-guided algorithm research: candidate programs have a crisp ordering contract, exact output verification is cheap, and inputs expose measurable structure such as runs, duplicates, inversions, and positional disorder. Those properties support a closed loop of hypothesis, implementation, oracle check, and held-out benchmark. They do not make comparison count a sufficient performance objective. We synthesize run-adaptive Powersort/Ford-Johnson results with learning-augmented sorting and AI-discovered routines, then study displacement-aware portfolios and deletion-backbone repair. A stratified descent-density model predicts the exceptional-key fraction p from adjacent descents, d=p-p²/2. A first gate stayed near baseline on held-out 1--11% corruption but lost badly at 14--26%. A sequential interval portfolio adds adaptive sampling and a Powersort middle regime: on fresh 14--26% cases it reduces median regret from +31.48% to -0.64%, while keeping full-grid median regret at +2.67% over 96 matched cases. This process shows why sorting suits agentic search and why policies need frozen thresholds, target-machine latency, and independent evaluation.", "Abstract"),
           Spacer(1, 5)]
 key = Table([[P("MAIN RESULT", "TableHead"), P("The ladder lowers random-input comparisons from 18.5990 to 18.5275 per element, yet measures 135.97 ns/element versus 74.92 for Powersort and 57.64 for std::sort. Less work in the comparison model did not mean less elapsed time.", "BodyResearch")]], colWidths=[1.15*inch, 5.75*inch])
 key.setStyle(TableStyle([("BACKGROUND", (0,0), (0,0), TEAL), ("BACKGROUND", (1,0), (1,0), PALE_TEAL), ("VALIGN",(0,0),(-1,-1),"MIDDLE"), ("BOX",(0,0),(-1,-1),0.5,TEAL), ("LEFTPADDING",(0,0),(-1,-1),9), ("RIGHTPADDING",(0,0),(-1,-1),9), ("TOPPADDING",(0,0),(-1,-1),9), ("BOTTOMPADDING",(0,0),(-1,-1),9)]))
@@ -624,12 +661,22 @@ story += [P(f"On the 1m count grid, the gate selected insertion in {scale_routes
           KeepTogether([table([[cell(x, True) for x in ["Input, n=1m", "Gate", "Preserve", "std::sort", "Powersort", "Run gate", "Inv. gate"]]] + [[cell(x) for x in row] for row in [
               [d, *[f"{heldout_gate_time_median(a, d, 1_000_000):.2f}" for a in ("hybrid_backbone_gate", "deletion_backbone_preserve", "std_sort", "powersort", "hybrid_run_gate", "hybrid_inversion_gate")]]
               for d in ("outpct1", "outpct5", "outpct7", "outpct9", "outpct11", "outpct14", "outpct18", "outpct22", "outpct26", "outpct36", "disp16", "dup16", "random", "reversed", "sorted", "tail10")]],
-              [1.06*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch], font=6.2),
+              [1.06*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch, 1.00*inch], font=6.2, pad=2.5),
                         Spacer(1, 4), P("Table 8. Median ns/element at n=1,000,000 across three fresh seed-level medians. Each seed is the median of 21 interleaved serial timing repetitions; lower is faster.", "SmallResearch")]),
-          P(f"The held-out file contains 12,096 timing rows and 576 count rows; all 12,672 rows pass output validation. Against the fastest of five baselines on each matched seed and size, the gate's 30 pairs at 1--11% corruption have median regret {statistics.median(x[3] for x in gate_sparse_regrets):.2f}%, mean {statistics.mean(x[3] for x in gate_sparse_regrets):.2f}%, and are within 5% in {sum(x[3] <= 5 for x in gate_sparse_regrets)} cases. At 14--26%, all 24 held-out pairs exceed 5% regret (median {statistics.median(x[3] for x in gate_mid_regrets):.2f}%). Across the full 576-pair grid, median regret is {statistics.median(x[3] for x in gate_all_regrets):.2f}% and 95th percentile is {sorted(x[3] for x in gate_all_regrets)[int(.95*(len(gate_all_regrets)-1))]:.2f}%. At 14% the expected descent rate is about 13.0%, close to the 12.5% cutoff; finite sampling routed two of three one-million-element seeds to the slower preserve path. At 18--26%, the current policy chooses std::sort even though Powersort is faster on these generated cases. This is a concrete policy-boundary failure, not evidence that adjacent descents are uninformative.", "BodyResearch"),
-          P("The result supports a narrow claim: stratified adjacent descents distinguish sparse scattered corruption from ordinary monotone and highly disordered controls well enough to avoid distribution labels on the held-out 1--11% family. The same frozen gate is not a robust general-purpose portfolio; transition rates near the threshold are noisy, and its available fallback choice is wrong for part of the medium-density region. Further work should allocate more samples only near uncertain boundaries or add a distinct run-structure signal, then freeze a revised policy and test on new seeds. This is exactly where the mathematical model helps an agent propose a compact statistic, while the held-out benchmark prevents turning a plausible signal into an unsupported broad claim.", "BodyResearch"),
+          P(f"The held-out file contains 12,096 timing rows and 576 count rows; all 12,672 rows pass output validation. There are 96 matched workload cases (16 distributions, two sizes, three seeds). Against the fastest of five baselines on each case, the gate's 30 pairs at 1--11% corruption have median regret {statistics.median(x[3] for x in gate_sparse_regrets):.2f}%, mean {statistics.mean(x[3] for x in gate_sparse_regrets):.2f}%, and are within 5% in {sum(x[3] <= 5 for x in gate_sparse_regrets)} cases. At 14--26%, all 24 held-out pairs exceed 5% regret (median {statistics.median(x[3] for x in gate_mid_regrets):.2f}%). Across the 96 matched cases, median regret is {statistics.median(x[3] for x in gate_all_regrets):.2f}%, 41 are within 5%, and the 95th percentile is {sorted(x[3] for x in gate_all_regrets)[int(.95*(len(gate_all_regrets)-1))]:.2f}%. At 14% the expected descent rate is about 13.0%, close to the 12.5% cutoff; finite sampling routed two of three one-million-element seeds to the slower preserve path. At 18--26%, the current policy chooses std::sort even though Powersort is faster on these generated cases. This is a concrete policy-boundary failure, not evidence that adjacent descents are uninformative.", "BodyResearch"),
+          P("The gate identifies sparse scattered corruption, but it is not a general portfolio: threshold sampling is noisy, and std::sort is a poor medium-density fallback. The next policy changes both sampling and fallback structure.", "BodyResearch"),
+          PageBreak(), P("15. Sequential descent portfolio: confidence-aware routing", "H1Blue"),
+          P("The first gate used a fixed 1,024-pair probe and a single threshold. Its failures suggest two distinct corrections: increase the sample only when it cannot separate neighboring density regimes, and expose Powersort as an explicit middle-density route. The new hybrid_descent_portfolio starts with 64 sampled adjacent pairs in each of 16 positional bins, then doubles the per-bin target to 128, 256, and at most 512 (8,192 total pairs). At each stage it computes an approximate normal uncertainty interval for the descent rate and maps the endpoints through p=1-sqrt(1-2d). These are routing bands, not formal sequential confidence guarantees; optional stopping and within-bin variation are not corrected.", "BodyResearch"),
+          P("The policy preserves run-sensitive behavior for sorted, reversed, and localized-tail inputs. It selects deletion_backbone_preserve only when the upper estimated p bound is below 12.5% and descents occur in at least four bins; it selects Powersort when the estimated interval lies between 12.5% and 45%; broad disorder at or above 45% goes to std::sort. If the final interval still crosses a boundary at the 8,192-pair cap, a point-estimate fallback avoids the specialized backbone route. Training seeds 71--73 were kept separate from held-out seeds 81--83.", "BodyResearch"),
+          KeepTogether([table([[cell(x, True) for x in ["Input, n=1m", "Sequential", "Old gate", "Preserve", "Powersort", "std::sort", "Inv. gate"]]] + [[cell(x) for x in row] for row in [
+              [d, *[f"{descent_time_median(a, d, 1_000_000):.2f}" for a in ("hybrid_descent_portfolio", "hybrid_backbone_gate", "deletion_backbone_preserve", "powersort", "std_sort", "hybrid_inversion_gate")]]
+              for d in ("outpct1", "outpct5", "outpct7", "outpct9", "outpct11", "outpct14", "outpct18", "outpct22", "outpct26", "outpct36", "disp16", "dup16", "random", "reversed", "sorted", "tail10")]],
+              [1.00*inch, 1.00*inch, 0.94*inch, 0.94*inch, 0.94*inch, 0.94*inch, 0.94*inch], font=6.0, pad=2.5),
+                        Spacer(1, 4), P("Table 9. n=1,000,000; medians over three fresh seeds, each a median of 21 interleaved timing repetitions. Times are ns/element; lower is faster.", "SmallResearch")]),
+          P(f"The held-out grid has 672 count rows and 14,112 timing rows, all validated; these represent 96 matched workload cases across 16 distributions, two sizes, and three seeds. Relative to the fastest of six baselines on each case, the new policy has median regret {statistics.median(x[3] for x in descent_sparse_regrets):+.2f}% on the 30 sparse 1--11% pairs (mean {statistics.mean(x[3] for x in descent_sparse_regrets):+.2f}%; within 5% in {sum(x[3] <= 5 for x in descent_sparse_regrets)}/30). It changes the failure region: on 24 pairs at 14--26%, median regret is {statistics.median(x[3] for x in descent_mid_regrets):+.2f}% (mean {statistics.mean(x[3] for x in descent_mid_regrets):+.2f}%; within 5% in {sum(x[3] <= 5 for x in descent_mid_regrets)}/24). Across all {len(descent_all_regrets)} matched cases, median regret is {statistics.median(x[3] for x in descent_all_regrets):+.2f}%, mean {statistics.mean(x[3] for x in descent_all_regrets):+.2f}%, and {sum(x[3] <= 5 for x in descent_all_regrets)} cases are within 5%; the 95th percentile is {sorted(x[3] for x in descent_all_regrets)[int(.95*(len(descent_all_regrets)-1))]:+.2f}%. The earlier gate's matched-case median at 14--26% was +31.48%, so the PowerSort middle route removes that systematic loss on this synthetic family.", "BodyResearch"),
+          P("At n=1m, the route comparator counts indicate that p=14--36% consistently selects Powersort; 1--11% selects preserve, with one p=11% seed sampling about four times the initial budget. Probe cost is about 1,800--2,100 comparator calls for most cases and reached 15,348 on one p=14% case. The policy beats the previous gate's held-out failure region without broad regressions in aggregate, but sparse-family median regret is still +4.21%, and the worst held-out case is +33.59%. CPU frequency varied under powersave; the table and regret use interleaved medians, but the host remains noisy. This is a better routing hypothesis, not a general sorting guarantee. The normal-band approximation, thresholds, workloads, and domain limitations are documented in the raw analysis.", "BodyResearch"),
           P("Reproducibility", "H1Blue"),
-          P("Run <tt>./build/sortlab selftest</tt>. Reproduce inversion studies with profiles <tt>inversion-adaptivity</tt>, <tt>inversion-heldout</tt>, and <tt>inversion-scale</tt>. Reproduce deletion-distance profiles with <tt>deletion-backbone-density</tt> and <tt>deletion-backbone-density-heldout</tt>. Overflow variants use <tt>deletion-backbone-route-v2</tt>, <tt>deletion-backbone-preserve-v3</tt>, and <tt>deletion-backbone-rotate-v4</tt>. The descent gate uses <tt>deletion-backbone-gate-v1</tt> for train seeds 51--53 and <tt>deletion-backbone-gate-heldout-v1</tt> for fresh seeds 61--63; the frozen threshold is 12.5%. Each gate timing case has 21 interleaved serial repetitions on CPU 2. Earlier ladder and run-gate artifacts remain in the repository.", "BodyResearch"),
+          P("Run <tt>./build/sortlab selftest</tt>. The first adjacent-descent gate uses <tt>deletion-backbone-gate-v1</tt> (train seeds 51--53) and <tt>deletion-backbone-gate-heldout-v1</tt> (seeds 61--63). The sequential portfolio uses <tt>descent-portfolio-train-v1</tt> (seeds 71--73) and <tt>descent-portfolio-heldout-v1</tt> (seeds 81--83); each timing case has 21 interleaved serial repetitions on CPU 2. Earlier ladder, inversion, and backbone profiles remain documented in the repository.", "BodyResearch"),
           Spacer(1, 9), P("References", "H1Blue")]
 
 refs = [
@@ -653,7 +700,7 @@ refs = [
 for ref in refs:
     story.append(P(ref, "Ref"))
 story += [Spacer(1, 7), HRFlowable(width="100%", thickness=0.7, color=colors.HexColor("#D7E1E7")),
-          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), and descent-gate held-out count/timing (576/12,096). The training rerun has 684/14,364 rows. All rows passed output validation.", "SmallResearch")]
+          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), the first descent-gate holdout (576/12,096), and the sequential descent-portfolio training/heldout grids (798/16,758 and 672/14,112). Every count/timing row passed output validation.", "SmallResearch")]
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 PaperDoc(str(OUT)).build(story)
