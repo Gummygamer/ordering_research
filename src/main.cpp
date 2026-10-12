@@ -184,7 +184,7 @@ enum Algo {
     A_HBIN21, A_HBIN32, A_HBIN62, A_HBIN123, A_INV_BINSERT, A_HINV_GATE,
     A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
     A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
-    A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO,
+    A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO, A_HQUANTILE_BACKBONE,
     A_RADIX,
 };
 struct AlgoInfo { const char* name; Algo id; bool stable; bool comparison; };
@@ -239,6 +239,7 @@ static const AlgoInfo ALGOS[] = {
     {"deletion_backbone_rotate", A_DELETION_BACKBONE_ROTATE, false, true},
     {"hybrid_backbone_gate", A_HBACKBONE_GATE, false, true},
     {"hybrid_descent_portfolio", A_HDESCENT_PORTFOLIO, false, true},
+    {"hybrid_quantile_backbone", A_HQUANTILE_BACKBONE, false, true},
     {"radix_lsd",   A_RADIX,      false, false},
 };
 static const AlgoInfo* find_algo(const std::string& name) {
@@ -300,6 +301,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_DELETION_BACKBONE_ROTATE: lab::deletion_backbone_rotate_sort(a, n, cmp); break;
         case A_HBACKBONE_GATE: lab::hybrid_backbone_gate(a, n, cmp); break;
         case A_HDESCENT_PORTFOLIO: lab::hybrid_descent_portfolio(a, n, cmp); break;
+        case A_HQUANTILE_BACKBONE: lab::hybrid_quantile_backbone(a, n, cmp); break;
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
 }
@@ -695,6 +697,45 @@ static bool selftest() {
             }
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "descent_port",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // Quantile peeling is certified by checking the residual backbone. If the
+    // pivot leaves disorder behind, the restored permutation must still sort.
+    {
+        struct QuantileBackboneCase { const char* dist; size_t n; int expect_choice; };
+        const QuantileBackboneCase cases[] = {
+            {"outpct1", 200000, 13}, {"outpct5", 200000, 13},
+            {"outpct14", 200000, 13}, {"outpct36", 200000, -1},
+            {"random", 200000, 12}, {"sorted", 200000, 10},
+            {"reversed", 200000, 10}, {"tail10", 200000, 10},
+            {"disp16", 200000, -1}, {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const QuantileBackboneCase& tc : cases) {
+            std::vector<u64> input = gen_dist(tc.dist, tc.n, 7);
+            std::vector<u64> expected = input;
+            std::sort(expected.begin(), expected.end());
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_quantile_backbone(result.data(), tc.n,
+                                          lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            ++checks;
+            if (result != expected || (tc.expect_choice >= 0 &&
+                                       choice != tc.expect_choice) ||
+                probe > total || (choice == 0 && probe != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL quantile_backbone d=%s n=%zu choice=%d expect=%d total=%" PRIu64
+                      " probe=%" PRIu64 "\n",
+                      tc.dist, tc.n, choice, tc.expect_choice, total, probe);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "quantile_bb",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }

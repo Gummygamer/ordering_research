@@ -1509,6 +1509,142 @@ void hybrid_descent_portfolio(T* a, size_t n, C cmp) {
     }
 }
 
+// Quantile-peeling sort for inputs whose disorder consists of scattered
+// high keys above an ordered backbone. A descent sample estimates p via
+// d=p-p^2/2; a conservative sample quantile supplies a pivot. The scan peels
+// values at/above the pivot while certifying that the remainder is ordered.
+// On a successful certificate, sort the peeled values and merge them back
+// into the backbone. A failed certificate restores the same permutation and
+// lets Powersort handle the resulting ordered-prefix/unordered-suffix layout.
+template <class T, class C>
+void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    constexpr size_t BINS = 16;
+    constexpr size_t PER_BIN = 64;
+    constexpr size_t SAMPLE_KEYS = BINS * PER_BIN * 2;
+    constexpr size_t MONOTONE_PERMILLE = 20;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+
+    std::mt19937_64 rng(0x51A7E2A1ULL);
+    std::vector<T> sample;
+    sample.reserve(SAMPLE_KEYS);
+    std::array<size_t, BINS> ascents{};
+    std::array<size_t, BINS> descents{};
+    auto probe_cmp = [&](const T& x, const T& y) {
+        ++g_gate_probe_comps;
+        return cmp(x, y);
+    };
+    for (size_t bin = 0; bin < BINS; ++bin) {
+        const size_t lo = bin * n / BINS;
+        const size_t hi = (bin + 1) * n / BINS;
+        const size_t span = hi - lo;
+        for (size_t trial = 0; trial < PER_BIN; ++trial) {
+            const size_t i = lo + static_cast<size_t>(rng() % (span - 1));
+            sample.push_back(a[i]);
+            sample.push_back(a[i + 1]);
+            if (probe_cmp(a[i + 1], a[i])) {
+                ++descents[bin];
+            } else if (probe_cmp(a[i], a[i + 1])) {
+                ++ascents[bin];
+            }
+        }
+    }
+
+    size_t total_descents = 0;
+    size_t active_bins = 0;
+    size_t low_run_bins = 0;
+    size_t low_ascending_bins = 0;
+    for (size_t bin = 0; bin < BINS; ++bin) {
+        total_descents += descents[bin];
+        if (descents[bin] != 0) ++active_bins;
+        if (ascents[bin] * 1000 <= MONOTONE_PERMILLE * PER_BIN ||
+            descents[bin] * 1000 <= MONOTONE_PERMILLE * PER_BIN)
+            ++low_run_bins;
+        if (ascents[bin] * 1000 <= MONOTONE_PERMILLE * PER_BIN)
+            ++low_ascending_bins;
+    }
+    if (low_run_bins >= 13 &&
+        (active_bins < 4 || low_ascending_bins >= 13)) {
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+        return;
+    }
+
+    const double descent_rate = static_cast<double>(total_descents) /
+                                static_cast<double>(BINS * PER_BIN);
+    const double margin = 1.96 * std::sqrt(
+        descent_rate * (1.0 - descent_rate) /
+        static_cast<double>(BINS * PER_BIN)) +
+        1.0 / static_cast<double>(BINS * PER_BIN);
+    const double p_upper = 1.0 - std::sqrt(std::max(
+        0.0, 1.0 - 2.0 * std::min(0.5, descent_rate + margin)));
+    if (p_upper >= 0.5) {
+        g_gate_choice = 12;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+
+    // Inflate the estimated high-key fraction to absorb both descent-rate
+    // uncertainty and the finite sample-quantile error. Excess ordinary high
+    // keys are harmless; a missed exceptional key is caught by verification.
+    const double quantile_margin = 1.96 * std::sqrt(
+        p_upper * (1.0 - p_upper) / static_cast<double>(SAMPLE_KEYS)) +
+        1.0 / static_cast<double>(SAMPLE_KEYS);
+    const double high_fraction = std::min(0.5, p_upper + quantile_margin);
+    const size_t pivot_rank = std::min(SAMPLE_KEYS - 1,
+        static_cast<size_t>((1.0 - high_fraction) * SAMPLE_KEYS));
+    std::nth_element(sample.begin(), sample.begin() + pivot_rank, sample.end(),
+                     probe_cmp);
+    const T pivot = sample[pivot_rank];
+
+    const size_t reserve_hint = std::min(n / 2,
+        std::max<size_t>(32, static_cast<size_t>(n * high_fraction)));
+    std::vector<T> high;
+    high.reserve(reserve_hint);
+    size_t backbone = 0;
+    bool ordered_backbone = true;
+    for (size_t read = 0; read < n; ++read) {
+        if (cmp(a[read], pivot)) {
+            if (backbone > 0 && cmp(a[read], a[backbone - 1]))
+                ordered_backbone = false;
+            if (backbone != read) a[backbone] = std::move(a[read]);
+            ++backbone;
+        } else {
+            high.push_back(std::move(a[read]));
+        }
+    }
+
+    if (!ordered_backbone || high.size() > n / 2) {
+        for (size_t i = 0; i < high.size(); ++i)
+            a[backbone + i] = std::move(high[i]);
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+        return;
+    }
+    if (high.empty()) {
+        g_gate_choice = 13;
+        return;
+    }
+
+    std::sort(high.begin(), high.end(), cmp);
+    size_t left = backbone;
+    size_t right = high.size();
+    size_t out = n;
+    while (left > 0 && right > 0) {
+        if (cmp(high[right - 1], a[left - 1]))
+            a[--out] = std::move(a[--left]);
+        else
+            a[--out] = std::move(high[--right]);
+    }
+    while (right > 0) a[--out] = std::move(high[--right]);
+    g_gate_choice = 13;
+}
+
 // ---------------------------------------------------------------------------
 // heapsort
 // ---------------------------------------------------------------------------

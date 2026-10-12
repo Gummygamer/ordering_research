@@ -18,7 +18,7 @@ from reportlab.platypus import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output/pdf/sorting_as_agent_research_v10.pdf"
+OUT = ROOT / "output/pdf/sorting_as_agent_research_v11.pdf"
 
 BLUE = colors.HexColor("#164E73")
 TEAL = colors.HexColor("#187C80")
@@ -66,6 +66,8 @@ backbone_gate_train = read_csv("results/deletion_backbone_gate_v2_train.csv")
 backbone_gate_heldout = read_csv("results/deletion_backbone_gate_heldout_v1.csv")
 descent_portfolio_train = read_csv("results/descent_portfolio_v1_train.csv")
 descent_portfolio_heldout = read_csv("results/descent_portfolio_v1_heldout.csv")
+quantile_backbone_train = read_csv("results/quantile_backbone_v1_train.csv")
+quantile_backbone_heldout = read_csv("results/quantile_backbone_v1_heldout.csv")
 
 
 def gate_regrets(rows, distributions):
@@ -122,6 +124,49 @@ def descent_time_median(algo, dist, n):
     return statistics.median(statistics.median(values) for values in by_seed.values())
 
 
+def quantile_regrets(rows, distributions):
+    grouped = defaultdict(list)
+    for row in rows:
+        if row["mode"] == "time":
+            grouped[(row["dist"], int(row["n"]), int(row["seed"]), row["algo"])].append(
+                int(row["time_ns"]))
+    baselines = ("std_sort", "powersort", "hybrid_run_gate", "hybrid_inversion_gate",
+                 "deletion_backbone_preserve", "hybrid_backbone_gate",
+                 "hybrid_descent_portfolio")
+    out = []
+    for dist, n, seed, algo in grouped:
+        if algo != "hybrid_quantile_backbone" or dist not in distributions:
+            continue
+        best = min(statistics.median(grouped[(dist, n, seed, name)]) for name in baselines)
+        candidate = statistics.median(grouped[(dist, n, seed, algo)])
+        out.append((dist, n, seed, 100 * (candidate / best - 1)))
+    return out
+
+
+def quantile_time_median(algo, dist, n):
+    by_seed = defaultdict(list)
+    for row in quantile_backbone_heldout:
+        if (row["mode"] == "time" and row["algo"] == algo and row["dist"] == dist
+                and int(row["n"]) == n):
+            by_seed[int(row["seed"])].append(int(row["time_ns"]) / n)
+    return statistics.median(statistics.median(values) for values in by_seed.values())
+
+
+def quantile_count_mean(algo, dist, n):
+    vals = [int(row["comparisons"]) / n for row in quantile_backbone_heldout
+            if row["mode"] == "count" and row["algo"] == algo and row["dist"] == dist
+            and int(row["n"]) == n]
+    return statistics.mean(vals) if vals else 0.0
+
+
+def quantile_heap_max_mib(algo, dist, n):
+    vals = [int(row["heap_aux_bytes"]) / (1024 * 1024)
+            for row in quantile_backbone_heldout
+            if row["mode"] == "count" and row["algo"] == algo and row["dist"] == dist
+            and int(row["n"]) == n]
+    return max(vals) if vals else 0.0
+
+
 gate_sparse_regrets = gate_regrets(
     backbone_gate_heldout, {f"outpct{p}" for p in (1, 5, 7, 9, 11)})
 gate_mid_regrets = gate_regrets(
@@ -138,6 +183,16 @@ descent_all_regrets = descent_regrets(descent_portfolio_heldout, {
     "outpct1", "outpct5", "outpct7", "outpct9", "outpct11", "outpct14",
     "outpct18", "outpct22", "outpct26", "outpct36", "sorted", "reversed",
     "tail10", "disp16", "dup16", "random"})
+quantile_train_regrets = quantile_regrets(
+    quantile_backbone_train, {row["dist"] for row in quantile_backbone_train})
+quantile_sparse_regrets = quantile_regrets(
+    quantile_backbone_heldout, {f"outpct{p}" for p in (1, 5, 7, 9, 11)})
+quantile_mid_regrets = quantile_regrets(
+    quantile_backbone_heldout, {f"outpct{p}" for p in (14, 18, 22, 26)})
+quantile_control_regrets = quantile_regrets(
+    quantile_backbone_heldout, {"sorted", "reversed", "tail10", "disp16", "dup16", "random"})
+quantile_all_regrets = quantile_regrets(
+    quantile_backbone_heldout, {row["dist"] for row in quantile_backbone_heldout})
 
 
 def backbone_time_median(rows, algo, dist, n):
@@ -677,6 +732,18 @@ story += [P(f"On the 1m count grid, the gate selected insertion in {scale_routes
           P("At n=1m, the route comparator counts indicate that p=14--36% consistently selects Powersort; 1--11% selects preserve, with one p=11% seed sampling about four times the initial budget. Probe cost is about 1,800--2,100 comparator calls for most cases and reached 15,348 on one p=14% case. The policy beats the previous gate's held-out failure region without broad regressions in aggregate, but sparse-family median regret is still +4.21%, and the worst held-out case is +33.59%. CPU frequency varied under powersave; the table and regret use interleaved medians, but the host remains noisy. This is a better routing hypothesis, not a general sorting guarantee. The normal-band approximation, thresholds, workloads, and domain limitations are documented in the raw analysis.", "BodyResearch"),
           P("Reproducibility", "H1Blue"),
           P("Run <tt>./build/sortlab selftest</tt>. The first adjacent-descent gate uses <tt>deletion-backbone-gate-v1</tt> (train seeds 51--53) and <tt>deletion-backbone-gate-heldout-v1</tt> (seeds 61--63). The sequential portfolio uses <tt>descent-portfolio-train-v1</tt> (seeds 71--73) and <tt>descent-portfolio-heldout-v1</tt> (seeds 81--83); each timing case has 21 interleaved serial repetitions on CPU 2. Earlier ladder, inversion, and backbone profiles remain documented in the repository.", "BodyResearch"),
+          PageBreak(), P("16. Quantile peeling: a verified ordered backbone", "H1Blue"),
+          P("The latest candidate targets a stronger structural property than low inversion count: after removing a small set of unusually large keys, the remaining sequence is already sorted. For scattered high-key corruption at rate p, the expected adjacent-descent rate d=p-p^2/2 estimates p. The algorithm samples 1,024 adjacent pairs across 16 position bins and retains the sampled keys; a conservative upper density estimate sets a sample quantile pivot. It scans the input once, peels keys at or above the pivot, and checks that the residual backbone is nondecreasing. If the certificate succeeds, it sorts only the peeled keys and merges them back from right to left. If the check fails, it restores the permutation and invokes Powersort. Sorted, reversed, and localized-tail samples route to Powersort; broad sampled disorder routes to std::sort. The certificate protects correctness, while the workload model only predicts when peeling will be profitable.", "BodyResearch"),
+          P(f"The candidate was fixed after training on seeds 111--113 and evaluated on distinct seeds 121--123. The held-out grid contains 768 count rows and 16,128 timing rows, all validated: 96 workload cases over 16 distributions, two sizes, and three seeds. Every time is the median of 21 interleaved repetitions; regret compares the candidate with the fastest of seven established baselines on each matched case. On the 30 sparse 1--11% corruption cases, median regret is {statistics.median(x[3] for x in quantile_sparse_regrets):+.2f}% and {sum(x[3] <= 5 for x in quantile_sparse_regrets)}/30 are within 5%. On 24 medium 14--26% corruption cases, median regret is {statistics.median(x[3] for x in quantile_mid_regrets):+.2f}% and all 24 are within 5%. Across all {len(quantile_all_regrets)} cases, median regret is {statistics.median(x[3] for x in quantile_all_regrets):+.2f}%, mean {statistics.mean(x[3] for x in quantile_all_regrets):+.2f}%, with {sum(x[3] <= 0 for x in quantile_all_regrets)} wins. Training median regret was {statistics.median(x[3] for x in quantile_train_regrets):+.2f}% over {len(quantile_train_regrets)} matched cases.", "BodyResearch"),
+          KeepTogether([table([[cell(x, True) for x in ["Input, n=1m", "Quantile", "Descent", "Preserve", "Powersort", "std::sort"]]] + [[cell(x) for x in row] for row in [
+              [d, *[f"{quantile_time_median(a, d, 1_000_000):.2f}" for a in ("hybrid_quantile_backbone", "hybrid_descent_portfolio", "deletion_backbone_preserve", "powersort", "std_sort")]]
+              for d in ("outpct1", "outpct5", "outpct11", "outpct14", "outpct22", "outpct36", "sorted", "reversed", "tail10", "disp16", "dup16", "random")]],
+              [1.00*inch, 1.05*inch, 1.05*inch, 1.05*inch, 1.05*inch, 1.05*inch], font=6.2, pad=2.5),
+                        Spacer(1, 4), P("Table 10. One million elements; time in ns/element, aggregated as the median of three seed-level medians. Each seed-level value is the median of 21 interleaved timing repetitions.", "SmallResearch")]),
+          P(f"The all-case median masks a clear domain split. On six control distributions, median regret is {statistics.median(x[3] for x in quantile_control_regrets):+.2f}%, mean {statistics.mean(x[3] for x in quantile_control_regrets):+.2f}%, and only {sum(x[3] <= 0 for x in quantile_control_regrets)}/{len(quantile_control_regrets)} cases win. Sorted inputs show a +26.2% median penalty; localized tail corruption is about +11%. In contrast, at n=1m and 1--11% outliers, the candidate reduces latency substantially; for example, the 1% case takes {quantile_time_median('hybrid_quantile_backbone', 'outpct1', 1_000_000):.2f} ns/element versus {quantile_time_median('hybrid_descent_portfolio', 'outpct1', 1_000_000):.2f} for the previous portfolio. The peak tracked auxiliary allocation reaches {quantile_heap_max_mib('hybrid_quantile_backbone', 'outpct36', 1_000_000):.2f} MiB at 36% corruption. Quantile peeling therefore has a real latency advantage on its intended sparse-to-medium scattered-key family, coupled with sampling/scan overhead on controls and a larger extracted-key buffer as p grows. It is not a general-purpose replacement.", "BodyResearch"),
+          P(f"This outcome illustrates why modern evaluation should lead with elapsed time and disclose memory, with comparison counts as a secondary diagnostic. At n=1m and 5% corruption, quantile peeling uses {quantile_count_mean('hybrid_quantile_backbone', 'outpct5', 1_000_000):.2f} comparisons per item versus {quantile_count_mean('hybrid_descent_portfolio', 'outpct5', 1_000_000):.2f} for the previous portfolio; the latency gap is much larger than that count gap suggests. Element writes, cache misses, branch misses, and energy were not measured, so they remain plausible cost explanations rather than findings. Future work should add hardware counters, larger and non-integer records, adversarial pivots, and a route that cheaply recognizes ordered controls before quantile sampling.", "BodyResearch"),
+          P("Reproducibility", "H1Blue"),
+          P("Run <tt>./build/sortlab selftest</tt>. Reproduce these data with <tt>quantile-backbone-train-v1</tt> (seeds 111--113) and <tt>quantile-backbone-heldout-v1</tt> (seeds 121--123). Both grids use sizes 200,000 and 1,000,000, 21 interleaved timing repetitions, and CPU 2. The new implementation passed 10 route/correctness cases inside the sorting self-test; all benchmark rows passed output validation. CPU frequency varied under powersave, so small differences should not be overinterpreted.", "BodyResearch"),
           Spacer(1, 9), P("References", "H1Blue")]
 
 refs = [
@@ -700,7 +767,7 @@ refs = [
 for ref in refs:
     story.append(P(ref, "Ref"))
 story += [Spacer(1, 7), HRFlowable(width="100%", thickness=0.7, color=colors.HexColor("#D7E1E7")),
-          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), the first descent-gate holdout (576/12,096), and the sequential descent-portfolio training/heldout grids (798/16,758 and 672/14,112). Every count/timing row passed output validation.", "SmallResearch")]
+          Spacer(1, 5), P("Data artifacts include ladder_v1_counts.csv (336 rows), run_gate_v1_pinned_time.csv (3,150), inversion_v4.csv (6,600), inversion_v4_heldout_full.csv (7,020), inversion_v4_scale.csv (4,320), deletion_backbone_density_v1.csv (6,336), deletion_backbone_density_heldout_v1.csv (7,920), route-v2 counts/timing (540/11,340), preserve-v3 counts/timing (630/13,230), rotate-v4 counts/timing (720/15,120), the first descent-gate holdout (576/12,096), sequential descent-portfolio training/heldout grids (798/16,758 and 672/14,112), and quantile-backbone training/heldout grids (912/19,152 and 768/16,128). Every count/timing row passed output validation.", "SmallResearch")]
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 PaperDoc(str(OUT)).build(story)
