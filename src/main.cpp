@@ -185,6 +185,7 @@ enum Algo {
     A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
     A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
     A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO, A_HQUANTILE_BACKBONE,
+    A_HGENERAL_PORTFOLIO,
     A_RADIX,
 };
 struct AlgoInfo { const char* name; Algo id; bool stable; bool comparison; };
@@ -240,6 +241,7 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_backbone_gate", A_HBACKBONE_GATE, false, true},
     {"hybrid_descent_portfolio", A_HDESCENT_PORTFOLIO, false, true},
     {"hybrid_quantile_backbone", A_HQUANTILE_BACKBONE, false, true},
+    {"hybrid_general_portfolio", A_HGENERAL_PORTFOLIO, false, true},
     {"radix_lsd",   A_RADIX,      false, false},
 };
 static const AlgoInfo* find_algo(const std::string& name) {
@@ -302,6 +304,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_HBACKBONE_GATE: lab::hybrid_backbone_gate(a, n, cmp); break;
         case A_HDESCENT_PORTFOLIO: lab::hybrid_descent_portfolio(a, n, cmp); break;
         case A_HQUANTILE_BACKBONE: lab::hybrid_quantile_backbone(a, n, cmp); break;
+        case A_HGENERAL_PORTFOLIO: lab::hybrid_general_portfolio(a, n, cmp); break;
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
 }
@@ -736,6 +739,41 @@ static bool selftest() {
             }
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "quantile_bb",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // The general portfolio must remain correct across each routing family,
+    // including any failed quantile certificate and its original-order restore.
+    {
+        const char* cases[] = {
+            "outpct1", "outpct5", "outpct14", "outpct36", "random",
+            "sorted", "reversed", "runs32", "runs1024", "nearly1",
+            "tail10", "saw13", "organpipe", "disp4", "disp16", "disp64",
+            "disp256", "dup2", "dup16", "dup256", "equal",
+        };
+        size_t checks = 0, fails = 0;
+        for (const char* dist : cases) {
+            constexpr size_t n = 200000;
+            std::vector<u64> input = gen_dist(dist, n, 17);
+            std::vector<u64> expected = input;
+            std::sort(expected.begin(), expected.end());
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_general_portfolio(
+                result.data(), n, lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            ++checks;
+            if (result != expected || probe > total) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL general_portfolio d=%s choice=%d total=%" PRIu64
+                      " probe=%" PRIu64 "\n",
+                      dist, lab::g_gate_choice, total, probe);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "general_port",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }

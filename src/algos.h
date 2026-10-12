@@ -1462,9 +1462,11 @@ void hybrid_descent_portfolio(T* a, size_t n, C cmp) {
         }
 
         const size_t samples = BINS * per_bin;
-        descent_rate = static_cast<double>(total_descents) / samples;
+        const double sample_count = static_cast<double>(samples);
+        descent_rate = static_cast<double>(total_descents) / sample_count;
         const double margin = 1.96 * std::sqrt(
-            descent_rate * (1.0 - descent_rate) / samples) + 1.0 / samples;
+            descent_rate * (1.0 - descent_rate) / sample_count) +
+            1.0 / sample_count;
         const double d_lower = std::max(0.0, descent_rate - margin);
         const double d_upper = std::min(0.5, descent_rate + margin);
         auto invert_density = [](double d) {
@@ -1603,7 +1605,8 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
     const T pivot = sample[pivot_rank];
 
     const size_t reserve_hint = std::min(n / 2,
-        std::max<size_t>(32, static_cast<size_t>(n * high_fraction)));
+        std::max<size_t>(32, static_cast<size_t>(
+            static_cast<double>(n) * high_fraction)));
     std::vector<T> high;
     high.reserve(reserve_hint);
     size_t backbone = 0;
@@ -1643,6 +1646,302 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
     }
     while (right > 0) a[--out] = std::move(high[--right]);
     g_gate_choice = 13;
+}
+
+// General-purpose portfolio: verify a sparse high-key model from sampled
+// pairs before attempting quantile peeling; otherwise route to a run-aware,
+// low-disorder, or broad-disorder sorter. The exact backbone scan is certified
+// and its failure path reconstructs the original permutation before fallback.
+template <class T, class C>
+void hybrid_general_portfolio(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    constexpr size_t BINS = 16;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+    const size_t per_bin = n < 500000 ? 24 : 32;
+    const size_t sample_pairs = BINS * per_bin;
+    const size_t sample_keys = 2 * sample_pairs;
+    const double sample_pair_count = static_cast<double>(sample_pairs);
+    const double sample_key_count = static_cast<double>(sample_keys);
+
+    struct PairSample { T left; T right; size_t position; };
+    std::mt19937_64 rng(0x6E3A91D5ULL);
+    std::vector<PairSample> pairs;
+    std::vector<T> sample;
+    pairs.reserve(sample_pairs);
+    sample.reserve(sample_keys);
+    std::array<size_t, BINS> ascents{};
+    std::array<size_t, BINS> descents{};
+    size_t equal_pairs = 0;
+    std::vector<T> representatives;
+    representatives.reserve(BINS);
+    auto probe_cmp = [&](const T& x, const T& y) {
+        ++g_gate_probe_comps;
+        return cmp(x, y);
+    };
+
+    for (size_t bin = 0; bin < BINS; ++bin) {
+        const size_t lo = bin * n / BINS;
+        const size_t hi = (bin + 1) * n / BINS;
+        const size_t span = hi - lo;
+        representatives.push_back(a[lo + span / 2]);
+        for (size_t trial = 0; trial < per_bin; ++trial) {
+            const size_t i = lo + static_cast<size_t>(rng() % (span - 1));
+            pairs.push_back({a[i], a[i + 1], i});
+            sample.push_back(a[i]);
+            sample.push_back(a[i + 1]);
+            if (probe_cmp(a[i + 1], a[i])) {
+                ++descents[bin];
+            } else if (probe_cmp(a[i], a[i + 1])) {
+                ++ascents[bin];
+            } else {
+                ++equal_pairs;
+            }
+        }
+    }
+
+    size_t total_ascents = 0;
+    size_t total_descents = 0;
+    size_t monotone_bins = 0;
+    size_t active_bins = 0;
+    size_t first_active_bin = BINS;
+    size_t last_active_bin = 0;
+    for (size_t bin = 0; bin < BINS; ++bin) {
+        total_ascents += ascents[bin];
+        total_descents += descents[bin];
+        if (descents[bin] > 0) {
+            ++active_bins;
+            first_active_bin = std::min(first_active_bin, bin);
+            last_active_bin = bin;
+        }
+        if (ascents[bin] == 0 || descents[bin] == 0) ++monotone_bins;
+    }
+
+    // A few values sampled at fixed positional landmarks expose globally
+    // monotone and single-turn shapes while random collections of sorted
+    // blocks still look unordered. A separate low-activity route admits a
+    // small noisy suffix without classifying shuffled sorted blocks as runs.
+    size_t direction_changes = 0;
+    int previous_direction = 0;
+    for (size_t i = 1; i < representatives.size(); ++i) {
+        int direction = 0;
+        if (probe_cmp(representatives[i], representatives[i - 1])) {
+            direction = -1;
+        } else if (probe_cmp(representatives[i - 1], representatives[i])) {
+            direction = 1;
+        }
+        if (direction != 0) {
+            if (previous_direction != 0 && direction != previous_direction)
+                ++direction_changes;
+            previous_direction = direction;
+        }
+    }
+    const double descent_rate = static_cast<double>(total_descents) /
+                                sample_pair_count;
+    size_t large_gap_inversions = 0;
+    bool sampled_large_gap = false;
+    if (active_bins <= 3) {
+        // Two scales avoid aliasing the period of shuffled fixed-size runs.
+        // A single n/32 gap can be nearly aligned with each run, making the
+        // later point systematically farther along its sorted block.
+        const std::array<size_t, 2> gaps{
+            std::max<size_t>(64, n / 32), n / 8};
+        constexpr size_t GAP_SAMPLES = 64;
+        for (size_t gap : gaps) {
+            size_t inversions = 0;
+            for (size_t i = 0; i < GAP_SAMPLES; ++i) {
+                const size_t lo = i * (n - gap) / GAP_SAMPLES;
+                const size_t hi = (i + 1) * (n - gap) / GAP_SAMPLES;
+                const size_t pos = lo +
+                    static_cast<size_t>(rng() % (hi - lo + 1));
+                if (probe_cmp(a[pos + gap], a[pos])) ++inversions;
+            }
+            large_gap_inversions = std::max(large_gap_inversions, inversions);
+        }
+        sampled_large_gap = true;
+    }
+    const bool smooth_global_shape = monotone_bins >= 13 &&
+                                     direction_changes <= 1;
+    const bool localized_tail_shape = monotone_bins >= 13 &&
+        total_descents > 0 && active_bins <= 3 && direction_changes <= 3 &&
+        (first_active_bin >= BINS - 3 || last_active_bin < 3) &&
+        sampled_large_gap && large_gap_inversions <= 16;
+    const bool run_adaptive_shape = smooth_global_shape || localized_tail_shape;
+    const double margin = 1.96 * std::sqrt(
+        descent_rate * (1.0 - descent_rate) /
+        sample_pair_count) + 1.0 / sample_pair_count;
+    const double p_upper = 1.0 - std::sqrt(std::max(
+        0.0, 1.0 - 2.0 * std::min(0.5, descent_rate + margin)));
+
+    auto run_powersort = [&]() {
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+    };
+    auto run_bl_quick = [&]() {
+        g_gate_choice = 12;
+        bl_quick(a, n, cmp);
+    };
+    auto run_near_sorted_route = [&]() {
+        if (sampled_large_gap && large_gap_inversions > 16) {
+            run_bl_quick();
+        } else {
+            hybrid_descent_portfolio(a, n, cmp);
+            g_gate_choice = 15;
+        }
+    };
+    auto run_local_disorder_route = [&]() {
+        size_t gap64_inversions = 0;
+        constexpr size_t GAP64_SAMPLES = 128;
+        for (size_t i = 0; i < GAP64_SAMPLES; ++i) {
+            const size_t lo = i * (n - 64) / GAP64_SAMPLES;
+            const size_t hi = (i + 1) * (n - 64) / GAP64_SAMPLES;
+            const size_t pos = lo + static_cast<size_t>(rng() % (hi - lo + 1));
+            if (probe_cmp(a[pos + 64], a[pos])) ++gap64_inversions;
+        }
+        if (gap64_inversions <= 2) {
+            const size_t outer_probe = g_gate_probe_comps;
+            hybrid_inversion_gate(a, n, cmp);
+            g_gate_probe_comps += outer_probe;
+            g_gate_choice = 14;
+        } else {
+            run_bl_quick();
+        }
+    };
+    auto fallback = [&]() {
+        if (run_adaptive_shape) {
+            run_powersort();
+        } else if (descent_rate < 0.05) {
+            run_near_sorted_route();
+        } else if (descent_rate < 0.70) {
+            run_local_disorder_route();
+        } else {
+            run_bl_quick();
+        }
+    };
+
+    // Dense adjacent descents can still come from short-range displacement.
+    // A small 64-apart inversion sample separates that family from genuinely
+    // broad disorder before the high-descent quicksort cutoff.
+    if (descent_rate >= 0.35 && descent_rate <= 0.65) {
+        size_t gap64_inversions = 0;
+        constexpr size_t GAP64_SAMPLES = 128;
+        for (size_t i = 0; i < GAP64_SAMPLES; ++i) {
+            const size_t lo = i * (n - 64) / GAP64_SAMPLES;
+            const size_t hi = (i + 1) * (n - 64) / GAP64_SAMPLES;
+            const size_t pos = lo + static_cast<size_t>(rng() % (hi - lo + 1));
+            if (probe_cmp(a[pos + 64], a[pos])) ++gap64_inversions;
+        }
+        if (gap64_inversions <= 2) {
+            const uint64_t outer_probe = g_gate_probe_comps;
+            hybrid_inversion_gate(a, n, cmp);
+            g_gate_probe_comps += outer_probe;
+            g_gate_choice = 16;
+            return;
+        }
+    }
+
+    // Preserve easy monotone shapes before the quantile model. A nonzero but
+    // sparse descent signal with an orderly low-key sample is the signature
+    // used for the certified high-key fast path.
+    if (smooth_global_shape && total_descents == 0) {
+        run_powersort();
+        return;
+    }
+    if (p_upper >= 0.25) {
+        run_bl_quick();
+        return;
+    }
+    if (total_descents == 0 ||
+        equal_pairs * 100 > sample_pairs * 15) {
+        fallback();
+        return;
+    }
+
+    std::nth_element(sample.begin(), sample.begin() +
+                     static_cast<size_t>((1.0 - p_upper) * sample_key_count),
+                     sample.end(), probe_cmp);
+    const T pivot = sample[static_cast<size_t>(
+        (1.0 - p_upper) * sample_key_count)];
+    bool sampled_backbone_ordered = true;
+    std::vector<std::pair<size_t, T>> low_samples;
+    low_samples.reserve(sample_keys);
+    for (const PairSample& pair : pairs) {
+        if (probe_cmp(pair.left, pivot))
+            low_samples.emplace_back(pair.position, pair.left);
+        if (probe_cmp(pair.right, pivot))
+            low_samples.emplace_back(pair.position + 1, pair.right);
+    }
+    std::sort(low_samples.begin(), low_samples.end(),
+              [](const auto& x, const auto& y) { return x.first < y.first; });
+    for (size_t i = 1; i < low_samples.size(); ++i) {
+        if (probe_cmp(low_samples[i].second, low_samples[i - 1].second)) {
+            sampled_backbone_ordered = false;
+            break;
+        }
+    }
+    if (!sampled_backbone_ordered) {
+        fallback();
+        return;
+    }
+
+    const double quantile_margin = 1.96 * std::sqrt(
+        p_upper * (1.0 - p_upper) / sample_key_count) +
+        1.0 / sample_key_count;
+    const double high_fraction = std::min(0.5, p_upper + quantile_margin);
+    const size_t reserve_hint = std::min(n / 2,
+        std::max<size_t>(32, static_cast<size_t>(
+            static_cast<double>(n) * high_fraction)));
+    std::vector<T> high;
+    std::vector<uint64_t> high_bits((n + 63) / 64, 0);
+    high.reserve(reserve_hint);
+    size_t backbone = 0;
+    bool ordered_backbone = true;
+    for (size_t read = 0; read < n; ++read) {
+        if (cmp(a[read], pivot)) {
+            if (backbone > 0 && cmp(a[read], a[backbone - 1]))
+                ordered_backbone = false;
+            if (backbone != read) a[backbone] = std::move(a[read]);
+            ++backbone;
+        } else {
+            high_bits[read / 64] |= uint64_t{1} << (read % 64);
+            high.push_back(std::move(a[read]));
+        }
+    }
+
+    if (!ordered_backbone || high.size() > n / 2) {
+        // Rebuild the exact original order from the stable low/high streams.
+        size_t low = backbone;
+        size_t high_index = high.size();
+        for (size_t read = n; read-- > 0;) {
+            if ((high_bits[read / 64] >> (read % 64)) & 1U)
+                a[read] = std::move(high[--high_index]);
+            else
+                a[read] = std::move(a[--low]);
+        }
+        fallback();
+        return;
+    }
+    if (high.empty()) {
+        g_gate_choice = 13;
+        return;
+    }
+
+    std::sort(high.begin(), high.end(), cmp);
+    size_t left = backbone;
+    size_t right = high.size();
+    size_t out = n;
+    while (left > 0 && right > 0) {
+        if (cmp(high[right - 1], a[left - 1]))
+            a[--out] = std::move(a[--left]);
+        else
+            a[--out] = std::move(high[--right]);
+    }
+    while (right > 0) a[--out] = std::move(high[--right]);
+    g_gate_choice = 11;
 }
 
 // ---------------------------------------------------------------------------

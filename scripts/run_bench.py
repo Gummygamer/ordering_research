@@ -171,6 +171,16 @@ BACKBONE_DESCENT_PORTFOLIO_ALGORITHMS = BACKBONE_GATE_ALGORITHMS + (
 BACKBONE_QUANTILE_ALGORITHMS = BACKBONE_DESCENT_PORTFOLIO_ALGORITHMS + (
     "hybrid_quantile_backbone",
 )
+GENERAL_PORTFOLIO_ALGORITHMS = (
+    "std_sort", "powersort", "hybrid_inversion_gate",
+    "hybrid_descent_portfolio", "hybrid_quantile_backbone", "bl_quick",
+    "hybrid_general_portfolio",
+)
+GENERAL_PORTFOLIO_CONTROLS = (
+    "sorted", "reversed", "runs32", "runs1024", "nearly1", "tail10",
+    "saw13", "organpipe", "disp4", "disp16", "disp64", "disp256",
+    "dup2", "dup16", "dup256", "equal", "random",
+)
 
 PROFILES = {
     # Liu's learned and finite-prefix-tuned Shellsort sequence (arXiv:2609.29881)
@@ -661,6 +671,34 @@ PROFILES = {
         ),
         count_seeds=(121, 122, 123),
         time_seeds=(121, 122, 123),
+    ),
+    "general-portfolio-train-v3": Profile(
+        grids=(
+            Grid(
+                GENERAL_PORTFOLIO_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 2, 4, 6, 8, 12, 16, 24, 32, 40)) +
+                GENERAL_PORTFOLIO_CONTROLS,
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(151, 152, 153),
+        time_seeds=(151, 152, 153),
+    ),
+    "general-portfolio-heldout-v3": Profile(
+        grids=(
+            Grid(
+                GENERAL_PORTFOLIO_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 5, 7, 9, 11, 14, 18, 22, 26, 36)) +
+                GENERAL_PORTFOLIO_CONTROLS,
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(161, 162, 163),
+        time_seeds=(161, 162, 163),
     ),
     # Duplicate-cardinality response of large-FJ blocks: the gate portfolio
     # across a dyadic dupK sweep at n=1m, anchored by dup16/dup256 identities
