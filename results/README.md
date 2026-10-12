@@ -1,5 +1,112 @@
 # Results inventory
 
+## Cost-aware sampled multi-cap ladder (`ladder-v1`)
+
+- `ladder_v1_counts.csv`: 336 count rows across eight algorithms, 14 inputs,
+  and seeds 1--3 at n=1m.
+- `ladder_v1_heldout_counts.csv`: 240 fresh-seed count rows across eight
+  algorithms, ten inputs, and seeds 4--6.
+- `ladder_v1_time_grid.csv`: 210 uninstrumented time rows across six
+  algorithms, five inputs, and seven serial repetitions at n=1m.
+- `ladder_v1_times.csv`: a separate initial 15-row random timing sample.
+- `ladder_v1_analysis.md`: algorithm, correctness, count, and runtime results.
+
+All rows have `ok=1`. The current paper is
+`../output/pdf/sorting_as_agent_research_v8.pdf`; version 1 is retained as
+`../output/pdf/sorting_as_agent_research.pdf`.
+See `notes/research_notes.md` section 15 for the inference and host limitations.
+
+## Stratified runtime gate (`rungate-v1`)
+
+- `run_gate_v1_all.csv`: 117 count rows over 13 inputs and seeds 1--3, plus
+  273 initial runtime rows.
+- `run_gate_v1_heldout_counts.csv`: 117 fresh-seed count rows, seeds 4--6.
+- `run_gate_v1_interleaved_time.csv`: 858 interleaved pilot time rows (two
+  seeds, 11 repetitions).
+- `run_gate_v1_pinned_time.csv`: 3,150 primary timing rows (three algorithms,
+  ten inputs, five seeds, 21 repetitions) with process affinity on CPU 2.
+- `run_gate_v1_analysis.md`: policy, self-test, exact branch accounting, and
+  paired runtime regret analysis.
+
+The time driver now interleaves algorithms per input and rotates the first
+algorithm in each group. The OS governor remained `powersave`, so CPU frequency
+was not fixed. The run-density paper follow-up is
+`../output/pdf/sorting_as_agent_research_v2.pdf`.
+
+## Inversion-sensitive binary insertion (`inv-v4`)
+
+- `inversion_v4.csv`: 6,600 validated rows over 20 inputs, five algorithms,
+  three count seeds, and three timing seeds (21 interleaved repetitions).
+- `inversion_v4_heldout_full.csv`: 7,020 validated rows over 13 inputs and
+  fresh seeds 7--11, including the standalone insertion baseline.
+- `inversion_v4_scale.csv`: 4,320 validated rows at n=1,000,000 over eight
+  inputs, five algorithms, three count seeds, and five timing seeds.
+- `inversion_v4_analysis.md`: inversion model, route counts, runtime regret,
+  and hardware limitations.
+
+The current paper is `../output/pdf/sorting_as_agent_research_v8.pdf`.
+
+## Distance-to-monotonicity and displacement candidates (`backbone-v1`)
+
+- `deletion_backbone_v1.csv`: 324 count and 6,804 timing rows for the first
+  algorithm comparison grid, across two sizes, nine inputs, six algorithms,
+  three count seeds, and three timing seeds.
+- `deletion_backbone_density_v1.csv`: 288 count and 6,048 timing rows across
+  1--8% outlier density, sorted/random controls, two sizes, and three seeds.
+- `deletion_backbone_density_heldout_v1.csv`: 360 count and 7,560 timing rows
+  on fresh seeds 7--9, with tested outlier densities 1--10%.
+- `deletion_backbone_analysis.md`: proof, candidate algorithms, protocol,
+  paired results, and limitations.
+
+All 21,384 rows passed output validation. The newest paper is
+`../output/pdf/sorting_as_agent_research_v8.pdf`.
+
+## Overflow routing follow-up (`backbone-route-v2`)
+
+- `deletion_backbone_route_v2_counts.csv`: 540 validated instrumented rows on
+  fresh seeds 21--23.
+- `deletion_backbone_route_v2.csv`: 11,340 uninstrumented timing rows, with
+  21 interleaved repetitions for each algorithm, input, size, and seed.
+- `deletion_backbone_route_v2_tables.md`: generated aggregation of count,
+  memory, and latency metrics.
+- `deletion_backbone_route_v2_analysis.md`: frozen routing rule, paired
+  results, modern evaluation objective, and limits.
+
+All 11,880 rows have `ok=1`. The route-v2 study and modern performance
+methodology are included in `../output/pdf/sorting_as_agent_research_v8.pdf`.
+
+## Preserve-prefix fallback ablation (`backbone-preserve-v3`)
+
+- `deletion_backbone_preserve_v3_counts.csv`: 630 instrumented rows on fresh
+  seeds 31--33.
+- `deletion_backbone_preserve_v3.csv`: 13,230 uninstrumented timing rows,
+  with 21 interleaved repetitions per case.
+- `deletion_backbone_preserve_v3_tables.md`: generated aggregation of count,
+  peak memory, and latency metrics.
+- `deletion_backbone_preserve_v3_analysis.md`: mathematical work split,
+  results, and limits.
+
+All 13,860 rows have `ok=1`. Paper v7 includes this ablation and a C++ standard
+reference for `std::inplace_merge` complexity.
+
+## Rotation-merge memory/latency ablation (`backbone-rotate-v4`)
+
+- `deletion_backbone_rotate_v4_counts.csv`: 720 instrumented rows, including
+  the buffered preserve comparison rerun on fresh seeds 41--43.
+- `deletion_backbone_rotate_v4.csv`: 15,120 uninstrumented timing rows, with
+  21 interleaved serial repetitions per case.
+- `deletion_backbone_rotate_v4_tables.md`: aggregation of count, heap, and
+  latency metrics.
+- `deletion_backbone_rotate_v4_analysis.md`: merge rule, cost bounds, tests,
+  and paired comparison.
+
+All 15,840 rows have `ok=1`. Rotation merge reduced the measured dense-grid
+heap to about 0.75 MiB but had +4.37% median latency versus buffered preserve
+on paired 4--10% corruption cases. At 4% it used fewer comparisons and was
+still slightly slower. Paper v8 discusses why comparison count is diagnostic
+for primitive in-memory keys while timing under a memory constraint is the
+appropriate objective for this host study.
+
 ## Five-seed runtime follow-up (`7c7cd7e`)
 
 - `pfj_runtime_7c7cd7e_all.csv`: 240 validated rows for `powersort`,

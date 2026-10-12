@@ -124,6 +124,45 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
         std::sort(tmp.begin(), tmp.end(),
                   [](const auto& x, const auto& y) { return x.first < y.first; });
         for (size_t i = 0; i < n; ++i) v[i] = tmp[i].second;
+    } else if (d.rfind("outliers", 0) == 0) {
+        char* end = nullptr;
+        const unsigned long long requested = std::strtoull(d.c_str() + 8, &end, 10);
+        if (end == d.c_str() + 8 || *end != '\0' || requested > 1000000000ull) {
+            std::fprintf(stderr, "unknown dist %s\n", d.c_str());
+            std::exit(2);
+        }
+        const size_t k = std::min<size_t>(n, static_cast<size_t>(requested));
+        std::vector<unsigned char> marked(n, 0);
+        std::vector<size_t> positions(n);
+        for (size_t i = 0; i < n; ++i) positions[i] = i;
+        std::shuffle(positions.begin(), positions.end(), rng);
+        for (size_t i = 0; i < k; ++i) marked[positions[i]] = 1;
+        std::vector<u64> exceptional(k);
+        for (size_t i = 0; i < k; ++i) exceptional[i] = n - k + i;
+        std::shuffle(exceptional.begin(), exceptional.end(), rng);
+        size_t ordinary = 0, special = 0;
+        for (size_t i = 0; i < n; ++i)
+            v[i] = marked[i] ? exceptional[special++] : ordinary++;
+    } else if (d.rfind("outpct", 0) == 0) {
+        char* end = nullptr;
+        const unsigned long long pct = std::strtoull(d.c_str() + 6, &end, 10);
+        if (end == d.c_str() + 6 || *end != '\0' || pct == 0 || pct > 100) {
+            std::fprintf(stderr, "unknown dist %s\n", d.c_str());
+            std::exit(2);
+        }
+        const size_t percent = static_cast<size_t>(pct);
+        const size_t k = (n / 100) * percent + ((n % 100) * percent) / 100;
+        std::vector<unsigned char> marked(n, 0);
+        std::vector<size_t> positions(n);
+        for (size_t i = 0; i < n; ++i) positions[i] = i;
+        std::shuffle(positions.begin(), positions.end(), rng);
+        for (size_t i = 0; i < k; ++i) marked[positions[i]] = 1;
+        std::vector<u64> exceptional(k);
+        for (size_t i = 0; i < k; ++i) exceptional[i] = n - k + i;
+        std::shuffle(exceptional.begin(), exceptional.end(), rng);
+        size_t ordinary = 0, special = 0;
+        for (size_t i = 0; i < n; ++i)
+            v[i] = marked[i] ? exceptional[special++] : ordinary++;
     } else {
         std::fprintf(stderr, "unknown dist %s\n", d.c_str());
         std::exit(2);
@@ -141,8 +180,11 @@ enum Algo {
     A_HFJ8, A_HFJ12, A_HFJ16, A_HFJ21, A_HFJ32, A_HFJ42,
     A_HFJ56, A_HFJ62, A_HFJ64, A_HFJA62,
     A_HFJ85, A_HFJ123, A_HFJ128, A_HFJAUTO, A_HFJAUTO256, A_HFJAUTO512,
-    A_HFJAUTO1024, A_HFJAUTO2048, A_HGATE,
-    A_HBIN21, A_HBIN32, A_HBIN62, A_HBIN123,
+    A_HFJAUTO1024, A_HFJAUTO2048, A_HGATE, A_HLADDER, A_HRUNGATE,
+    A_HBIN21, A_HBIN32, A_HBIN62, A_HBIN123, A_INV_BINSERT, A_HINV_GATE,
+    A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
+    A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
+    A_HBACKBONE_GATE,
     A_RADIX,
 };
 struct AlgoInfo { const char* name; Algo id; bool stable; bool comparison; };
@@ -182,10 +224,20 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_fjauto1024", A_HFJAUTO1024, false, true},
     {"hybrid_fjauto2048", A_HFJAUTO2048, false, true},
     {"hybrid_gate",  A_HGATE,     false, true},
+    {"hybrid_ladder", A_HLADDER,   false, true},
+    {"hybrid_run_gate", A_HRUNGATE, false, true},
     {"hybrid_bin21", A_HBIN21,    true,  true},
     {"hybrid_bin32", A_HBIN32,    true,  true},
     {"hybrid_bin62", A_HBIN62,    true,  true},
     {"hybrid_bin123", A_HBIN123,  true,  true},
+    {"inversion_binsert", A_INV_BINSERT, true, true},
+    {"hybrid_inversion_gate", A_HINV_GATE, false, true},
+    {"adaptive_window_heap", A_WINDOW_HEAP, false, true},
+    {"deletion_backbone_sort", A_DELETION_BACKBONE, false, true},
+    {"deletion_backbone_route", A_DELETION_BACKBONE_ROUTE, false, true},
+    {"deletion_backbone_preserve", A_DELETION_BACKBONE_PRESERVE, false, true},
+    {"deletion_backbone_rotate", A_DELETION_BACKBONE_ROTATE, false, true},
+    {"hybrid_backbone_gate", A_HBACKBONE_GATE, false, true},
     {"radix_lsd",   A_RADIX,      false, false},
 };
 static const AlgoInfo* find_algo(const std::string& name) {
@@ -232,10 +284,20 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_HFJAUTO1024: lab::hybrid_fj_auto_capped<1024>(a, n, cmp); break;
         case A_HFJAUTO2048: lab::hybrid_fj_auto_capped<2048>(a, n, cmp); break;
         case A_HGATE:      lab::hybrid_gate(a, n, cmp); break;
+        case A_HLADDER:    lab::hybrid_ladder(a, n, cmp); break;
+        case A_HRUNGATE:   lab::hybrid_run_gate(a, n, cmp); break;
         case A_HBIN21:     lab::hybrid_bin<21>(a, n, cmp); break;
         case A_HBIN32:     lab::hybrid_bin<32>(a, n, cmp); break;
         case A_HBIN62:     lab::hybrid_bin<62>(a, n, cmp); break;
         case A_HBIN123:    lab::hybrid_bin<123>(a, n, cmp); break;
+        case A_INV_BINSERT: lab::inversion_binary_insertion_sort(a, n, cmp); break;
+        case A_HINV_GATE: lab::hybrid_inversion_gate(a, n, cmp); break;
+        case A_WINDOW_HEAP: lab::adaptive_window_heap_sort(a, n, cmp); break;
+        case A_DELETION_BACKBONE: lab::deletion_backbone_sort(a, n, cmp); break;
+        case A_DELETION_BACKBONE_ROUTE: lab::deletion_backbone_route(a, n, cmp); break;
+        case A_DELETION_BACKBONE_PRESERVE: lab::deletion_backbone_preserve_sort(a, n, cmp); break;
+        case A_DELETION_BACKBONE_ROTATE: lab::deletion_backbone_rotate_sort(a, n, cmp); break;
+        case A_HBACKBONE_GATE: lab::hybrid_backbone_gate(a, n, cmp); break;
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
 }
@@ -246,7 +308,8 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
 static bool selftest() {
     const char* dists[] = {"random", "dup2", "dup6", "dup16", "equal",
                            "sorted", "reversed", "runs32", "nearly1", "saw13",
-                           "organpipe", "disp16", "tail10"};
+                           "organpipe", "disp16", "tail10", "outliers1",
+                           "outliers8", "outliers64"};
     size_t sizes[] = {0, 1, 2, 3, 4, 5, 7, 8, 15, 16, 17, 21, 24, 25, 63, 64,
                       65, 100, 127, 257, 1000, 2500};
     bool all_ok = true;
@@ -427,6 +490,236 @@ static bool selftest() {
             }
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "gate_account",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // The ladder must spend exactly its probe budget plus the selected
+    // portfolio branch, and its classification is checked far from the
+    // empirical crossover boundaries.
+    {
+        struct LadderCase { const char* dist; size_t n; int expect_choice; };
+        const LadderCase cases[] = {
+            {"random", 200000, 2}, {"disp64", 200000, 1},
+            {"disp128", 200000, 3}, {"disp256", 200000, 4},
+            {"disp512", 200000, 5}, {"disp2048", 200000, 2},
+            {"dup16", 200000, 1}, {"runs1024", 200000, 1},
+            {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const LadderCase& tc : cases) {
+            std::vector<u64> input = gen_dist(tc.dist, tc.n, 7);
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_ladder(result.data(), tc.n,
+                               lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            std::vector<u64> branch = input;
+            lab::g_comps = 0;
+            switch (choice) {
+                case 2: lab::hybrid_fj_auto_capped<2048>(branch.data(), tc.n,
+                         lab::Counting<lab::RawLess>{}); break;
+                case 3: lab::hybrid_fj_auto_capped<128>(branch.data(), tc.n,
+                         lab::Counting<lab::RawLess>{}); break;
+                case 4: lab::hybrid_fj_auto_capped<512>(branch.data(), tc.n,
+                         lab::Counting<lab::RawLess>{}); break;
+                case 5: lab::hybrid_fj_auto_capped<1024>(branch.data(), tc.n,
+                         lab::Counting<lab::RawLess>{}); break;
+                default: lab::powersort_fj(branch.data(), tc.n,
+                         lab::Counting<lab::RawLess>{}); break;
+            }
+            const u64 branch_comps = lab::g_comps;
+            ++checks;
+            if (choice != tc.expect_choice || result != branch ||
+                total != probe + branch_comps ||
+                (choice == 0 && probe != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL ladder d=%s n=%zu choice=%d expect=%d total=%" PRIu64
+                      " probe=%" PRIu64 " branch=%" PRIu64 "\n",
+                      tc.dist, tc.n, choice, tc.expect_choice,
+                      total, probe, branch_comps);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "ladder_account",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // Run-density routing must have exact accounting and match the selected
+    // std::sort/Powersort branch on both one-run and high-run-density inputs.
+    {
+        struct RunGateCase { const char* dist; size_t n; int expect_choice; };
+        const RunGateCase cases[] = {
+            {"random", 200000, 8}, {"sorted", 200000, 7},
+            {"reversed", 200000, 7}, {"equal", 200000, 7},
+            {"dup16", 200000, 8}, {"runs32", 200000, 8},
+            {"runs1024", 200000, 7}, {"organpipe", 200000, 7},
+            {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const RunGateCase& tc : cases) {
+            std::vector<u64> input = gen_dist(tc.dist, tc.n, 7);
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_run_gate(result.data(), tc.n,
+                                 lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            std::vector<u64> branch = input;
+            lab::g_comps = 0;
+            if (choice == 7)
+                lab::powersort(branch.data(), tc.n,
+                               lab::Counting<lab::RawLess>{});
+            else
+                std::sort(branch.begin(), branch.end(),
+                          lab::Counting<lab::RawLess>{});
+            const u64 branch_comps = lab::g_comps;
+            ++checks;
+            if (choice != tc.expect_choice || result != branch ||
+                total != probe + branch_comps ||
+                (choice == 0 && probe != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL run_gate d=%s n=%zu choice=%d expect=%d total=%" PRIu64
+                      " probe=%" PRIu64 " branch=%" PRIu64 "\n",
+                      tc.dist, tc.n, choice, tc.expect_choice,
+                      total, probe, branch_comps);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "run_gate_acc",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // The backbone router uses stratified descent density to distinguish
+    // scattered extreme-key corruption from localized or broad disorder.
+    {
+        struct BackboneGateCase { const char* dist; size_t n; int expect_choice; };
+        const BackboneGateCase cases[] = {
+            {"outpct1", 200000, 11}, {"outpct4", 200000, 11},
+            {"outpct12", 200000, 11}, {"outpct16", 200000, 12},
+            {"outpct24", 200000, 12}, {"random", 200000, 12},
+            {"sorted", 200000, 10}, {"reversed", 200000, 10},
+            {"tail10", 200000, 10}, {"disp16", 200000, 12},
+            {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const BackboneGateCase& tc : cases) {
+            std::vector<u64> input = gen_dist(tc.dist, tc.n, 7);
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_backbone_gate(result.data(), tc.n,
+                                      lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            std::vector<u64> branch = input;
+            lab::g_comps = 0;
+            if (choice == 10)
+                lab::powersort(branch.data(), tc.n,
+                               lab::Counting<lab::RawLess>{});
+            else if (choice == 11)
+                lab::deletion_backbone_preserve_sort(
+                    branch.data(), tc.n, lab::Counting<lab::RawLess>{});
+            else
+                std::sort(branch.begin(), branch.end(),
+                          lab::Counting<lab::RawLess>{});
+            const u64 branch_comps = lab::g_comps;
+            ++checks;
+            if (choice != tc.expect_choice || result != branch ||
+                total != probe + branch_comps ||
+                (choice == 0 && probe != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL backbone_gate d=%s n=%zu choice=%d expect=%d total=%" PRIu64
+                      " probe=%" PRIu64 " branch=%" PRIu64 "\n",
+                      tc.dist, tc.n, choice, tc.expect_choice,
+                      total, probe, branch_comps);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "backbone_gate",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // The inversion portfolio should use insertion only on low-disorder
+    // perturbations and otherwise match one of the established runtime
+    // branches, with every probe included in comparator accounting.
+    {
+        struct InvGateCase { const char* dist; size_t n; int expect_choice; };
+        const InvGateCase cases[] = {
+            {"disp4", 200000, 9}, {"disp16", 200000, 9},
+            {"disp32", 200000, 8}, {"random", 200000, 8},
+            {"sorted", 200000, 7}, {"reversed", 200000, 7},
+            {"runs1024", 200000, 7}, {"tail10", 200000, 7},
+            {"random", 1000, 0},
+        };
+        size_t checks = 0, fails = 0;
+        for (const InvGateCase& tc : cases) {
+            std::vector<u64> input = gen_dist(tc.dist, tc.n, 7);
+            std::vector<u64> result = input;
+            lab::g_comps = 0;
+            lab::hybrid_inversion_gate(result.data(), tc.n,
+                                       lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probe = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            std::vector<u64> branch = input;
+            lab::g_comps = 0;
+            if (choice == 9)
+                lab::inversion_binary_insertion_sort(
+                    branch.data(), tc.n, lab::Counting<lab::RawLess>{});
+            else if (choice == 7)
+                lab::powersort(branch.data(), tc.n,
+                               lab::Counting<lab::RawLess>{});
+            else
+                std::sort(branch.begin(), branch.end(),
+                          lab::Counting<lab::RawLess>{});
+            const u64 branch_comps = lab::g_comps;
+            ++checks;
+            if (choice != tc.expect_choice || result != branch ||
+                total != probe + branch_comps ||
+                (choice == 0 && probe != 0)) {
+                ++fails;
+                if (fails == 1)
+                    std::fprintf(stderr,
+                      "  FAIL inversion_gate d=%s n=%zu choice=%d expect=%d total=%" PRIu64
+                      " probe=%" PRIu64 " branch=%" PRIu64 "\n",
+                      tc.dist, tc.n, choice, tc.expect_choice,
+                      total, probe, branch_comps);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "inv_gate_acc",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+
+    // Exercise the rotation merge directly over every short run-size pair,
+    // including empty runs and many duplicate-key boundary cases.
+    {
+        std::mt19937_64 rng(0xA11CE5u);
+        size_t checks = 0, fails = 0;
+        for (size_t left = 0; left <= 48; ++left) {
+            for (size_t right = 0; right <= 48; ++right) {
+                for (int trial = 0; trial < 3; ++trial) {
+                    std::vector<u64> actual(left + right);
+                    for (u64& value : actual) value = rng() % 13;
+                    std::sort(actual.begin(), actual.begin() + left);
+                    std::sort(actual.begin() + left, actual.end());
+                    std::vector<u64> expected = actual;
+                    std::inplace_merge(expected.begin(), expected.begin() + left,
+                                       expected.end(), lab::RawLess{});
+                    lab::rotation_merge(actual.data(), 0, left,
+                                        left + right, lab::RawLess{});
+                    ++checks;
+                    if (actual != expected) ++fails;
+                }
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "rotate_merge",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }

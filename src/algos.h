@@ -56,6 +56,49 @@ void insertion_sort(T* a, size_t n, C cmp) {
     }
 }
 
+// Inversion-adaptive binary insertion. The adjacent check makes ordered input
+// linear; for an out-of-place item, exponential search brackets its insertion
+// point and binary search finds the stable upper bound. Element transport is
+// proportional to the inversion count. A linear move budget bounds exposure
+// on a misleading presortedness signal, then completes with std::sort.
+template <class T, class C>
+void inversion_binary_insertion_sort(T* a, size_t n, C cmp) {
+    const size_t move_budget = n > std::numeric_limits<size_t>::max() / 16
+        ? std::numeric_limits<size_t>::max() : 16 * n;
+    size_t moved = 0;
+    for (size_t i = 1; i < n; ++i) {
+        if (!cmp(a[i], a[i - 1])) continue;
+        T value = a[i];
+        size_t step = 1;
+        size_t left = 0;
+        size_t right = i;
+        while (step < i) {
+            const size_t pos = i - step;
+            if (!cmp(value, a[pos])) {
+                left = pos + 1;
+                break;
+            }
+            right = pos + 1;
+            if (step > i / 2) break;
+            step *= 2;
+        }
+        size_t lo = left, hi = right;
+        while (lo < hi) {
+            const size_t mid = lo + ((hi - lo) >> 1);
+            if (cmp(value, a[mid])) hi = mid;
+            else lo = mid + 1;
+        }
+        const size_t shift = i - lo;
+        if (shift > move_budget - moved) {
+            std::stable_sort(a, a + n, cmp);
+            return;
+        }
+        std::memmove(a + lo + 1, a + lo, shift * sizeof(T));
+        moved += shift;
+        a[lo] = value;
+    }
+}
+
 // a[0..sorted) already sorted; extend sortedness to a[0..n). Stable.
 template <class T, class C>
 void binary_insert_extend(T* a, size_t sorted, size_t n, C cmp) {
@@ -904,6 +947,448 @@ void hybrid_gate(T* a, size_t n, C cmp) {
     } else {
         g_gate_choice = 1;
         powersort_fj(a, n, cmp);
+    }
+}
+
+// Empirical displacement ladder. Adjacent/equality samples reject clearly
+// structured or duplicate-heavy inputs; a 256-position inversion sample
+// then selects among the FJ block caps observed to win at increasing
+// displacement scales. This is a distribution-specific portfolio heuristic,
+// not a worst-case guarantee. The thresholds are deliberately exposed in the
+// research notes and evaluated on held-out seeds.
+template <class T, class C>
+void hybrid_ladder(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        powersort_fj(a, n, cmp);
+        return;
+    }
+    std::mt19937_64 rng(0x1ADD3A5EULL);
+    const size_t adjacent = std::min<size_t>(2048, n / 512);
+    const size_t per_distance = std::min<size_t>(4096, n / 128);
+    size_t descents = 0, equal_pairs = 0;
+    for (size_t t = 0; t < adjacent; ++t) {
+        const size_t i = (size_t)(rng() % (n - 1));
+        ++g_gate_probe_comps;
+        if (cmp(a[i + 1], a[i])) { ++descents; continue; }
+        ++g_gate_probe_comps;
+        if (!cmp(a[i], a[i + 1])) ++equal_pairs;
+    }
+    // The existing gate's pre-registered K=112 cardinality boundary.
+    bool eligible = equal_pairs * 112 < adjacent;
+    eligible = eligible && descents * 10 >= adjacent * 3 &&
+               descents * 10 <= adjacent * 7;
+    size_t inversions = 0;
+    constexpr size_t probe_distance = 256;
+    if (eligible) {
+        for (size_t t = 0; t < per_distance; ++t) {
+            const size_t i = (size_t)(rng() % (n - probe_distance));
+            ++g_gate_probe_comps;
+            if (cmp(a[i + probe_distance], a[i])) ++inversions;
+        }
+    }
+    // Approximate Phi(-256/(sqrt(2)*sigma)) bins, used only as a
+    // predictor over the existing sigma/distribution suite.
+    const size_t rate = eligible ? inversions * 1000 / per_distance : 0;
+    if (!eligible || rate < 20) {
+        g_gate_choice = 1;
+        powersort_fj(a, n, cmp);
+    } else if (rate < 160) {
+        g_gate_choice = 3;
+        hybrid_fj_auto_capped<128>(a, n, cmp);
+    } else if (rate < 300) {
+        g_gate_choice = 4;
+        hybrid_fj_auto_capped<512>(a, n, cmp);
+    } else if (rate < 400) {
+        g_gate_choice = 5;
+        hybrid_fj_auto_capped<1024>(a, n, cmp);
+    } else {
+        g_gate_choice = 2;
+        hybrid_fj_auto_capped<2048>(a, n, cmp);
+    }
+}
+
+// Runtime portfolio based on stratified natural-run density. The caller owns
+// probe accounting so this helper can be composed into a second-level policy.
+template <class T, class C>
+void run_gate_sort_by_density(T* a, size_t n, C cmp) {
+    std::mt19937_64 rng(0x5A7A11ULL);
+    constexpr size_t BINS = 16;
+    constexpr size_t PER_BIN = 128;
+    constexpr size_t MONOTONE_PERMILLE = 20;
+    size_t low_run_bins = 0;
+    for (size_t b = 0; b < BINS; ++b) {
+        const size_t lo = b * n / BINS;
+        const size_t hi = (b + 1) * n / BINS;
+        const size_t span = hi - lo;
+        size_t ascents = 0, descents = 0;
+        for (size_t t = 0; t < PER_BIN; ++t) {
+            const size_t i = lo + (size_t)(rng() % (span - 1));
+            ++g_gate_probe_comps;
+            if (cmp(a[i + 1], a[i])) {
+                ++descents;
+            } else {
+                ++g_gate_probe_comps;
+                if (cmp(a[i], a[i + 1])) ++ascents;
+            }
+        }
+        if (ascents * 1000 <= MONOTONE_PERMILLE * PER_BIN ||
+            descents * 1000 <= MONOTONE_PERMILLE * PER_BIN)
+            ++low_run_bins;
+    }
+    const bool low_run_density = low_run_bins >= 13;
+    if (low_run_density) {
+        g_gate_choice = 7;
+        powersort(a, n, cmp);
+    } else {
+        g_gate_choice = 8;
+        std::sort(a, a + n, cmp);
+    }
+}
+
+// Runtime portfolio based on stratified natural-run density. A set of bins
+// that are each nearly monotone predicts long runs and locally concentrated
+// disorder (for example, a sorted prefix with a random tail). Powersort can
+// exploit that structure without making std::sort scan the whole array.
+// Thresholds are host/workload hypotheses, not a speed guarantee.
+template <class T, class C>
+void hybrid_run_gate(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+    run_gate_sort_by_density(a, n, cmp);
+}
+
+// Inversion-sensitive portfolio. A short adjacent sample protects fully
+// monotone inputs, which Powersort handles particularly well. A fixed-lag
+// inversion sample then estimates whether disorder remains local: low rates
+// at lag 64 route to inversion-sensitive binary insertion; otherwise the
+// existing natural-run gate chooses its runtime branch. The insertion
+// candidate has an O(n) move budget and falls back to std::sort on overflow.
+// The cutoff is empirical for the declared displacement workloads.
+template <class T, class C>
+void hybrid_inversion_gate(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    constexpr size_t ADJ_SAMPLES = 256;
+    constexpr size_t GAP = 64;
+    constexpr size_t GAP_SAMPLES = 2048;
+    constexpr size_t MAX_GAP_INVERSIONS = 8;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+    std::mt19937_64 rng(0x1A7E510ULL);
+    size_t adjacent_descents = 0;
+    for (size_t t = 0; t < ADJ_SAMPLES; ++t) {
+        const size_t i = (size_t)(rng() % (n - 1));
+        ++g_gate_probe_comps;
+        if (cmp(a[i + 1], a[i])) ++adjacent_descents;
+    }
+    if (adjacent_descents == 0) {
+        // No sampled adjacent inversions strongly suggests long monotone
+        // regions; use the run-adaptive branch directly and avoid a second
+        // round of samples on this fast path.
+        g_gate_choice = 7;
+        powersort(a, n, cmp);
+        return;
+    }
+    size_t gap_inversions = 0;
+    for (size_t t = 0; t < GAP_SAMPLES; ++t) {
+        const size_t i = (size_t)(rng() % (n - GAP));
+        ++g_gate_probe_comps;
+        if (cmp(a[i + GAP], a[i])) ++gap_inversions;
+    }
+    if (gap_inversions <= MAX_GAP_INVERSIONS) {
+        g_gate_choice = 9;
+        inversion_binary_insertion_sort(a, n, cmp);
+    } else {
+        run_gate_sort_by_density(a, n, cmp);
+    }
+}
+
+// Self-verifying bounded-displacement sorter. For an input whose maximum
+// rank displacement is Delta, a min-heap over Delta+1 consecutive unread
+// values emits the next sorted item. Since Delta is unknown, start with a
+// small window and double it after any emitted-order violation. Each attempt
+// writes into a separate buffer, so failed guesses leave the input intact.
+// The final width n is a heap sort and therefore guarantees correctness for
+// every strict-weak-order comparator. This trades O(n) output storage for an
+// exact, distribution-free verifier around the displacement-sensitive core.
+template <class T, class C>
+void adaptive_window_heap_sort(T* a, size_t n, C cmp) {
+    if (n < 2) return;
+
+    std::vector<T> output(n);
+    std::vector<T> heap;
+    size_t width = std::min<size_t>(n, 8);
+
+    for (;;) {
+        heap.clear();
+        heap.reserve(width);
+        size_t next = 0;
+        const size_t initial = std::min(width, n);
+        for (; next < initial; ++next) heap.push_back(a[next]);
+
+        auto push = [&](T value) {
+            heap.push_back(std::move(value));
+            size_t child = heap.size() - 1;
+            while (child > 0) {
+                const size_t parent = (child - 1) / 2;
+                if (!cmp(heap[child], heap[parent])) break;
+                std::swap(heap[child], heap[parent]);
+                child = parent;
+            }
+        };
+        auto pop_min = [&]() {
+            T result = std::move(heap.front());
+            if (heap.size() == 1) {
+                heap.pop_back();
+                return result;
+            }
+            heap.front() = std::move(heap.back());
+            heap.pop_back();
+            size_t parent = 0;
+            for (;;) {
+                const size_t left = parent * 2 + 1;
+                if (left >= heap.size()) break;
+                size_t child = left;
+                const size_t right = left + 1;
+                if (right < heap.size() && cmp(heap[right], heap[left]))
+                    child = right;
+                if (!cmp(heap[child], heap[parent])) break;
+                std::swap(heap[parent], heap[child]);
+                parent = child;
+            }
+            return result;
+        };
+
+        bool ordered = true;
+        size_t written = 0;
+        while (!heap.empty()) {
+            T value = pop_min();
+            if (written > 0 && cmp(value, output[written - 1])) {
+                ordered = false;
+                break;
+            }
+            output[written++] = std::move(value);
+            if (next < n) push(a[next++]);
+        }
+        if (ordered && written == n) {
+            std::move(output.begin(), output.end(), a);
+            return;
+        }
+        if (width == n) {
+            // A valid strict weak ordering makes this unreachable: with a
+            // full-input heap, each emitted item is globally minimal.
+            std::sort(a, a + n, cmp);
+            return;
+        }
+        width = width > n / 2 ? n : width * 2;
+    }
+}
+
+// Deletion-backbone sorter. A descent between the current backbone top and
+// the next input item is a witnessed inversion. Removing both endpoints and
+// continuing leaves a nondecreasing subsequence. These disjoint inversion
+// pairs imply that q removed items satisfy q <= 2k, where k is the minimum
+// deletions needed to obtain a nondecreasing subsequence (n - LNDS length).
+// Sort the outliers and merge them backward into the compacted backbone. The
+// outlier budget bounds storage and restores the processed prefix before the
+// std::sort fallback; the input therefore remains exactly sortable on every
+// path, without trusting a sample estimate of k.
+template <class T, class C>
+void rotation_merge(T* a, size_t first, size_t middle, size_t last, C cmp) {
+    if (first == middle || middle == last) return;
+    if (!cmp(a[middle], a[middle - 1])) return;
+    if (last - first == 2) {
+        std::swap(a[first], a[middle]);
+        return;
+    }
+
+    size_t first_cut;
+    size_t second_cut;
+    if (middle - first > last - middle) {
+        first_cut = first + (middle - first) / 2;
+        second_cut = static_cast<size_t>(
+            std::lower_bound(a + middle, a + last, a[first_cut], cmp) - a);
+    } else {
+        second_cut = middle + (last - middle) / 2;
+        first_cut = static_cast<size_t>(
+            std::upper_bound(a + first, a + middle, a[second_cut], cmp) - a);
+    }
+    const size_t new_middle = static_cast<size_t>(
+        std::rotate(a + first_cut, a + middle, a + second_cut) - a);
+    rotation_merge(a, first, first_cut, new_middle, cmp);
+    rotation_merge(a, new_middle, second_cut, last, cmp);
+}
+
+template <class T, class C>
+void deletion_backbone_sort_impl(T* a, size_t n, C cmp,
+                                 bool route_late_overflow,
+                                 bool preserve_backbone_late = false,
+                                 bool rotate_merge_late = false) {
+    if (n < 2) return;
+    const size_t budget = std::max<size_t>(2, n / 16);
+    std::vector<T> outliers;
+    size_t backbone = 0;
+    for (size_t read = 0; read < n; ++read) {
+        if (backbone == 0 || !cmp(a[read], a[backbone - 1])) {
+            if (backbone != read) a[backbone] = std::move(a[read]);
+            ++backbone;
+            continue;
+        }
+        if (outliers.empty()) outliers.reserve(std::min<size_t>(budget + 2, 4096));
+        outliers.push_back(std::move(a[backbone - 1]));
+        outliers.push_back(std::move(a[read]));
+        --backbone;
+        if (outliers.size() > budget) {
+            if (route_late_overflow && preserve_backbone_late &&
+                read >= n / 4) {
+                // The unread suffix is untouched. Complete a sorted prefix
+                // from the backbone and extracted outliers, sort only that
+                // suffix, then merge the two sorted ranges.
+                const size_t prefix = read + 1;
+                std::sort(outliers.begin(), outliers.end(), cmp);
+                size_t left = backbone;
+                size_t right = outliers.size();
+                size_t out = prefix;
+                while (left > 0 && right > 0) {
+                    if (cmp(outliers[right - 1], a[left - 1]))
+                        a[--out] = std::move(a[--left]);
+                    else
+                        a[--out] = std::move(outliers[--right]);
+                }
+                while (right > 0) a[--out] = std::move(outliers[--right]);
+                powersort(a + prefix, n - prefix, cmp);
+                if (rotate_merge_late)
+                    rotation_merge(a, 0, prefix, n, cmp);
+                else
+                    std::inplace_merge(a, a + prefix, a + n, cmp);
+                return;
+            }
+            // backbone + outliers.size() == read + 1: restore the exact
+            // processed multiset, leaving the unread suffix untouched.
+            for (size_t j = 0; j < outliers.size(); ++j)
+                a[backbone + j] = std::move(outliers[j]);
+            if (route_late_overflow && read >= n / 4)
+                powersort(a, n, cmp);
+            else
+                std::sort(a, a + n, cmp);
+            return;
+        }
+    }
+
+    if (outliers.empty()) return;
+    std::sort(outliers.begin(), outliers.end(), cmp);
+    size_t left = backbone;
+    size_t right = outliers.size();
+    size_t out = n;
+    while (left > 0 && right > 0) {
+        if (cmp(outliers[right - 1], a[left - 1]))
+            a[--out] = std::move(a[--left]);
+        else
+            a[--out] = std::move(outliers[--right]);
+    }
+    while (right > 0) a[--out] = std::move(outliers[--right]);
+}
+
+template <class T, class C>
+void deletion_backbone_sort(T* a, size_t n, C cmp) {
+    deletion_backbone_sort_impl(a, n, cmp, false);
+}
+
+// A fallback portfolio using scan progress as a cheap signal: reaching the
+// outlier budget late suggests a sparse-corruption input whose many surviving
+// ordered runs favor Powersort; reaching it early suggests broad disorder and
+// routes to std::sort. The n/4 decision is empirical and does not affect
+// correctness; both fallback branches receive a restored permutation.
+template <class T, class C>
+void deletion_backbone_route(T* a, size_t n, C cmp) {
+    deletion_backbone_sort_impl(a, n, cmp, true);
+}
+
+// Late-overflow ablation: preserve the completed sorted backbone, then sort
+// only the untouched suffix with Powersort and merge the two sorted ranges.
+// The n/4 routing cutoff is inherited unchanged from deletion_backbone_route.
+template <class T, class C>
+void deletion_backbone_preserve_sort(T* a, size_t n, C cmp) {
+    deletion_backbone_sort_impl(a, n, cmp, true, true);
+}
+
+// Memory-conscious final merge: use recursive binary partitioning and
+// rotations instead of std::inplace_merge's temporary buffer. Auxiliary
+// merge state is logarithmic stack space; element rotation work is higher.
+template <class T, class C>
+void deletion_backbone_rotate_sort(T* a, size_t n, C cmp) {
+    deletion_backbone_sort_impl(a, n, cmp, true, true, true);
+}
+
+// Stratified adjacent-descent router for sparse extreme-key corruption.
+// If disorder is localized to a few bins, Powersort retains its run advantage.
+// If each bin has modest but distributed descent density, the deletion-backbone
+// continuation exploits the sorted subsequence. Broad disorder goes to std::sort.
+template <class T, class C>
+void hybrid_backbone_gate(T* a, size_t n, C cmp) {
+    constexpr size_t MIN_N = 131072;
+    constexpr size_t BINS = 16;
+    constexpr size_t PER_BIN = 64;
+    constexpr size_t MONOTONE_PERMILLE = 20;
+    constexpr size_t MAX_DESCENT_PERMILLE = 125;
+    g_gate_probe_comps = 0;
+    if (n < MIN_N) {
+        g_gate_choice = 0;
+        std::sort(a, a + n, cmp);
+        return;
+    }
+
+    std::mt19937_64 rng(0xBACC0AE5ULL);
+    size_t low_run_bins = 0;
+    size_t active_bins = 0;
+    size_t total_descents = 0;
+    for (size_t bin = 0; bin < BINS; ++bin) {
+        const size_t lo = bin * n / BINS;
+        const size_t hi = (bin + 1) * n / BINS;
+        const size_t span = hi - lo;
+        size_t ascents = 0;
+        size_t descents = 0;
+        for (size_t trial = 0; trial < PER_BIN; ++trial) {
+            const size_t i = lo + static_cast<size_t>(rng() % (span - 1));
+            ++g_gate_probe_comps;
+            if (cmp(a[i + 1], a[i])) {
+                ++descents;
+            } else {
+                ++g_gate_probe_comps;
+                if (cmp(a[i], a[i + 1])) ++ascents;
+            }
+        }
+        total_descents += descents;
+        if (descents > 0) ++active_bins;
+        if (ascents * 1000 <= MONOTONE_PERMILLE * PER_BIN ||
+            descents * 1000 <= MONOTONE_PERMILLE * PER_BIN)
+            ++low_run_bins;
+    }
+
+    const bool sparse_scattered = total_descents > 0 && active_bins >= 4 &&
+        total_descents * 1000 <= MAX_DESCENT_PERMILLE * BINS * PER_BIN;
+    if (sparse_scattered ||
+        (low_run_bins < 13 && total_descents * 1000 <=
+         MAX_DESCENT_PERMILLE * BINS * PER_BIN)) {
+        g_gate_choice = 11;
+        deletion_backbone_preserve_sort(a, n, cmp);
+    } else if (low_run_bins >= 13) {
+        g_gate_choice = 10;
+        powersort(a, n, cmp);
+    } else {
+        g_gate_choice = 12;
+        std::sort(a, a + n, cmp);
     }
 }
 

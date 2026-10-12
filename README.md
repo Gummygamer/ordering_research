@@ -54,8 +54,8 @@ g++ -O3 -march=native -std=c++20 \
 ```
 
 The benchmark driver builds and probes the binary, runs count jobs in parallel,
-runs timing jobs strictly serially, validates every row, and refuses to
-overwrite result files. Its milestone profile uses three count seeds and five
+runs one timing subprocess at a time while interleaving algorithms by input,
+validates every row, and refuses to overwrite result files. Its milestone profile uses three count seeds and five
 timing repetitions for the three headline algorithms:
 
 ```sh
@@ -144,7 +144,7 @@ formats.
 
 ## Algorithms
 
-The registry includes 34 comparison algorithms plus one radix reference:
+The registry includes 48 comparison algorithms plus one radix reference:
 standard-library baselines (`std_sort`, `std_stable`),
 heapsort, three quicksort variants (`quick_mo3`, `dual_pivot`, `bl_quick`), a
 top-down mergesort, Timsort, Powersort, binary-insertion and Ford--Johnson
@@ -192,8 +192,34 @@ The run-merging family is the focus:
   distances 64/256/1024, all from a fixed-seed index generator) and selects
   auto2048 only when every deep-disorder test passes. Below n=131,072 it is
   exactly `powersort_fj` with zero probes.
+- `hybrid_ladder` is an experimental multi-cap sampled portfolio. It rejects
+  duplicate-heavy and low-adjacency-disorder inputs, then uses the sampled
+  inversion rate at distance 256 to select an FJ cap of 128/512/1024/2048 or
+  fall back to `powersort_fj`. Its thresholds are tied to the local Gaussian
+  `dispX` model, not a guarantee. The `ladder` and `ladder-heldout` profiles
+  test count behavior; time mode should be evaluated separately because probe
+  cost and FJ implementation overhead can erase comparison savings. See
+  `results/ladder_v1_analysis.md` and the paper under `output/pdf/`.
+- `hybrid_run_gate` uses 16 stratified regions with 128 sampled adjacent pairs
+  per region to estimate local run density. If at least 13 regions are nearly
+  monotone at the 2% threshold, it runs Powersort; otherwise it runs
+  `std::sort`. The runtime-oriented `run-gate` profiles compare the portfolio
+  with both branches, and timing jobs are interleaved by input. The threshold
+  is empirical and currently specific to this host/workload study.
+- `inversion_binsert` checks adjacent order, then uses exponential search and
+  binary insertion for out-of-order elements. Its element shifts track input
+  inversions; a 16n movement budget triggers stable-sort fallback.
+- `hybrid_inversion_gate` combines a short adjacent sample with 2,048 lag-64
+  comparisons. It routes low sampled inversion density to `inversion_binsert`,
+  near-monotone samples directly to Powersort, and other inputs through the
+  run-density portfolio. The thresholds are empirical; the move budget bounds
+  the insertion path if the sample misclassifies an input.
 - `hybrid_bin21`, `32`, `62`, and `123` substitute stable binary insertion at
   the same fixed block sizes, isolating the Ford--Johnson contribution.
+
+The `inversion-adaptivity`, `inversion-heldout`, and `inversion-scale` profiles
+evaluate this inversion-sensitive family on low-displacement inputs, fresh
+seeds and distributions, and one-million-element arrays.
 
 Ford--Johnson variants, including `powersort_fj`, are **unstable**. `powersort`,
 `powersort_fixed`, `timsort`, `merge_td`, the binary hybrids, and
@@ -428,3 +454,41 @@ veto-biased; with a fixed public probe seed it is not adversarially robust.
 
 Additional context and experiment history are in
 [`notes/research_notes.md`](notes/research_notes.md) and [`HANDOFF.md`](HANDOFF.md).
+
+
+## Distance-to-monotonicity study
+
+`deletion_backbone_sort` exploits a different near-order measure from inversions and
+rank displacement: `k = n - LNDS`, the minimum number of deletions needed to
+leave a sorted subsequence. Its greedy scan collects disjoint inversion pairs,
+so its outlier count `q` satisfies `q <= 2k`; it sorts those outliers and merges
+them with the retained backbone. A bounded buffer restores the input before
+falling back to `std::sort`. In fresh-seed measurements at 1--3% sparse
+corruption, it beat the fastest standalone baseline in all 18 paired cases
+across n=200k and n=1m. The 1/16 buffer limit causes a sharp loss of advantage
+around 4% corruption.
+
+`adaptive_window_heap` tested the complementary maximum-displacement `Delta`
+parameter with a retry-and-verify heap window. Sparse global outliers have high
+`Delta`, so this candidate was much slower; it remains a measured negative
+result. `deletion_backbone_route` preserves the 1--3% fast path and routes late
+overflow to Powersort; on fresh 4--10% outlier cases it beat the original
+fallback across all 42 size/seed pairs, but has a memory cost and regresses on
+some ordinary controls. `deletion_backbone_preserve` completes the sorted
+backbone, sorts only the untouched suffix, and merges the two ranges. On fresh
+4% outlier inputs it runs faster than the prior route despite making more
+comparisons; its peak merge memory is higher. Comparison count remains
+diagnostic; the study ranks policies by uninstrumented latency under memory
+constraints. See `results/deletion_backbone_analysis.md`,
+`results/deletion_backbone_route_v2_analysis.md`, and
+`results/deletion_backbone_preserve_v3_analysis.md`. The
+`deletion-backbone`, `deletion-backbone-density`,
+`deletion-backbone-density-heldout`, `deletion-backbone-route-v2`, and
+`deletion-backbone-preserve-v3` profiles reproduce the grids. The
+`deletion_backbone_rotate` variant replaces the last buffered merge with a
+rotation merge: it keeps peak heap near 0.75 MiB on dense outlier cases, but
+adds about 4.4% median latency against the buffered variant. At 4% corruption
+it uses fewer comparisons yet runs slightly slower, a direct reminder that
+comparison count alone is not a machine-time score. See
+`results/deletion_backbone_rotate_v4_analysis.md` and the v8 paper in
+`output/pdf/` for paired seeds and the memory-latency tradeoff.

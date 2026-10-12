@@ -283,3 +283,213 @@ At n=1m, mean comparisons per element / median serial ns per element (learned / 
 The detailed [Shellsort results analysis](../results/shellsort_2609_analysis.md), added 2026-10-03, includes `std_sort`, separates comparison and runtime samples, explains tracked heap versus stack storage, and contrasts the local panel with Liu's operation-count metric and 25 tasks. It also distinguishes the five-seed PFJ follow-up from the single-seed Shellsort timing study.
 
 Two other new arXiv hits were screened without implementation: [Certification of Bilateral Patience Sort in Theorema and Rocq](https://arxiv.org/abs/2609.34889) is a formalization and proof-engineering case study of an existing sort, not a new comparison-count or practical sorting method; [From Shortcut Learning to Discrete Neural Insertion Sort](https://arxiv.org/abs/2609.31114) studies faithful neural execution trained at length 16 and generalized to 64/128, rather than a comparator-based C++ sorter. Neither supplied a method fitting the lab's benchmark objective.
+
+## 15. Cost-aware multi-cap portfolio (`ladder-v1`, 2026-10-11)
+
+The sampled multi-cap algorithm `hybrid_ladder` was added after the earlier
+displacement-response and duplicate-cardinality studies. It uses adjacent
+comparisons for an order/duplicate veto and estimates disorder from up to 4,096
+random pairs at positional lag 256. A rate below 20 permille selects
+`powersort_fj`; subsequent cut points 160, 300, and 400 permille select FJ caps
+128, 512, 1024, and 2048. The formula motivating this signal,
+`P(inversion at lag d) ~= Phi(-d/(sqrt(2)*sigma))`, applies only to this lab's
+Gaussian `dispX` generator. The selected thresholds are empirical; the code is
+not a learning-augmented guarantee and is vulnerable to inputs outside the
+sample model. `g_gate_probe_comps` accounts for every probe, and the new
+`ladder_account` self-test checks branch output and comparator accounting.
+
+The warnings-as-errors C++20 build and full `sortlab selftest` passed. The main
+count profile contains 336 rows (8 algorithms, 14 distributions, seeds 1--3);
+the held-out profile contains 240 rows (8 algorithms, 10 distributions, seeds
+4--6). All rows have `ok=1`. The runtime grid contains 210 uninstrumented rows
+(6 algorithms, five inputs, seven serial repetitions, n=1m). Files are
+`results/ladder_v1_counts.csv`, `results/ladder_v1_heldout_counts.csv`,
+`results/ladder_v1_time_grid.csv`, and `results/ladder_v1_times.csv`.
+
+On random n=1m, the ladder averages 18.527490 comparisons/element versus
+18.599039 for Powersort, 18.580018 for PFJ, and 18.520456 for auto2048. Held-out
+random seeds give 18.527617 versus 18.579358 for PFJ. Across 30 held-out
+distribution/seed cases, the ladder uses fewer comparisons than PFJ in 23;
+its largest regression is +0.183106/element on `dup96`, near the empirical
+cardinality crossover. It does not dominate the older gate on the held-out
+count grid: the largest regression is of similar magnitude, and its random
+comparison count is +0.00118/element relative to the gate.
+
+The uninstrumented time grid changes the recommendation. On random data, median
+ns/element were `std_sort` 57.64, Powersort 74.92, PFJ 80.54, auto2048 136.11,
+the ladder 135.97, and the old gate 159.91. On `disp1024`, the ladder took
+109.17 ns/element versus 47.04 for Powersort; on `dup16`, it was 43.08 versus
+42.44; sorted input was 0.74 versus 0.44. Thus the ladder is a new tested
+comparison portfolio, not a runtime improvement. The count savings did not
+cover probe work and large-FJ implementation overhead. Count-mode `time_ns`
+was excluded.
+
+This experiment narrows the agent-search objective: sort correctness is
+exactly checkable, and run/duplicate/displacement statistics expose interpretable
+features, so candidate generation and falsification are straightforward. But
+optimization must use a vector that includes target-machine latency, memory,
+stability, and workload regret. Comparison count is a useful model feature and
+theoretical diagnostic, not a stand-in for time. Hardware counters were not
+available on this host (`perf_event_paranoid=4`), and timings were neither
+frequency-pinned nor interleaved, so small gaps are not portable conclusions.
+The first paper version synthesizing these findings is
+`output/pdf/sorting_as_agent_research.pdf`; the run-gate follow-up is in the
+current `output/pdf/sorting_as_agent_research_v2.pdf`.
+
+## 16. Stratified run-density runtime portfolio (`rungate-v1`, 2026-10-11)
+
+The ladder study shows why optimizing comparison count is an unreliable route
+to faster sorts on this host. The follow-up `hybrid_run_gate` uses the same
+known input-structure principle but optimizes the direct measured objective:
+sample 128 adjacent pairs in each of 16 equal index bins; mark a bin low-run
+density if either ascending or descending comparisons are at most 2%; if at
+least 13 bins meet the criterion, call Powersort, otherwise call `std::sort`.
+Stratification lets the gate detect a long ordered prefix with a disordered
+tail without classifying that input as uniformly random. The 13/16 cutoff also
+lets one or two localized bins be disordered while retaining the run-adaptive
+branch. This is an empirical policy, not an approximation theorem or a
+worst-case runtime guarantee.
+
+The new algorithm passes the warnings-as-errors C++20 build and full
+`sortlab selftest`; `run_gate_acc` checks nine branch/output/accounting cases.
+`run_gate_v1_all.csv` has 117 count rows over 13 inputs and seeds 1--3, plus
+273 initial time rows. `run_gate_v1_heldout_counts.csv` adds 117 fresh-seed
+count rows for seeds 4--6. `run_gate_v1_interleaved_time.csv` retains a 2-seed,
+11-repeat pilot. The primary timing evidence is
+`run_gate_v1_pinned_time.csv`: 3,150 validated rows from 3 sorters × 10 inputs
+× 5 seeds × 21 serial repetitions, with experiment processes pinned to CPU 2.
+The timing driver now interleaves algorithms by input and rotates which
+algorithm runs first per input. The host's governor remains `powersave`; CPU
+frequency is not fixed, so the result is much less sensitive to migration but
+not a constant-frequency benchmark.
+
+Across 50 distribution/seed pairs, compare the run gate's per-seed timing
+median to the faster of the two standalone branch medians. Its median excess
+was 0.96% (mean 0.81%); it was within 5% of the measured best branch in 42/50
+pairs and within 1% in 26/50. The maximum excess was 23.99%, concentrated in
+fast monotone cases where sub-microsecond absolute differences are noisy.
+The same decision rule selected `std_sort` on random, duplicate-16, nearly1,
+runs32, saw13, and all tested `dispX` inputs; it selected Powersort on sorted,
+reversed, organpipe, runs1024, and tail10. Across all 78 count rows, every gate
+count was exactly its selected branch count plus 2,048--4,096 probe calls, and
+every output passed the reference check.
+
+This portfolio is substantially closer to its fastest branch than the
+Ford--Johnson ladder, which was about 1.8x slower than Powersort on random
+input. It is not evidence that the gate is faster than its branches: by
+construction it adds probes, and small negative paired runtime deltas are
+within system noise. Its result is a verified low-regret routing hypothesis
+on a declared workload set. Future agents should preserve the exact branch
+oracle, tune policies only on training workloads, and report regret on fresh
+workloads and hardware. The `run-gate` and `run-gate-heldout` profiles capture
+the count grids; use `--phase time`, multiple seeds, and `--time-reps` for the
+interleaved timing procedure. The paper follow-up, including the comparison-
+count/runtime distinction and complete run-gate timing table, is
+`output/pdf/sorting_as_agent_research_v2.pdf`.
+
+## 17. Inversion-sensitive insertion portfolio (`inv-v4`, 2026-10-11)
+
+The next presortedness measure is the inversion count $I$, the number of
+out-of-order index pairs. This is complementary to the natural-run signal:
+insertion work is tied to inversions, while Powersort work is tied to runs.
+Prior theory studies inversion-adaptive sorting, and an empirical comparison
+of adaptive sorts reports that the algorithm with fewer cache misses need not
+be the fastest. See [Elmasry, “Counting Inversions Adaptively”
+](https://arxiv.org/abs/1503.01192) and [Elmasry and Hammad,
+“Inversion-Sensitive Sorting Algorithms in Practice”
+](https://doi.org/10.1145/1412228.1455267).
+
+`inversion_binsert` checks each adjacent pair and skips already ordered
+elements. On an inversion it uses exponential search backward, binary-searches
+the insertion point, and shifts the intervening range with `memmove`. Every
+shift removes exactly the inversions involving that element, so total shifted
+elements equal $I$. The binary search reduces comparison work when a misplaced
+element is only a short distance from its final position. To bound cost under
+a misleading selector, the implementation allows at most $16n$ shifted
+elements before completing with `std::stable_sort`; the path remains stable
+and the fallback prevents quadratic movement.
+
+`hybrid_inversion_gate` uses 256 adjacent-pair samples. If none are descents,
+it calls Powersort directly. Otherwise it samples 2,048 pairs at positional
+distance 64: at most eight sampled inversions route to `inversion_binsert`,
+and higher rates defer to `hybrid_run_gate`. This is a sample-based proxy, not
+an estimate of total $I$ without distribution assumptions. The move budget is
+the safety bound; the cutoff is an empirical policy.
+
+The strict C++20 build and full `sortlab selftest` pass, including stable-order
+checks and `inv_gate_acc` exact output and probe-accounting checks (9 cases).
+The final raw grids are:
+
+- `inversion_v4.csv`: 6,600 validated rows, 20 distributions, five algorithms,
+  three count seeds, and three timing seeds.
+- `inversion_v4_heldout_full.csv`: 7,020 validated rows, 13 distributions,
+  count seeds 7--9 and time seeds 7--11.
+- `inversion_v4_scale.csv`: 4,320 validated rows at $n=1,000,000$, eight
+  inputs, and five algorithms; timing uses five seeds and 21 serial repeats.
+
+The primary one-million-element table reports median ns/element, first taking
+the median of 21 timings for each seed and then the median across five seeds:
+
+| Input | `std_sort` | Powersort | Run gate | Inversion insertion | Inversion gate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sorted | 7.70 | 0.53 | 0.73 | 0.68 | 0.57 |
+| disp4 | 17.43 | 17.58 | 16.99 | 11.73 | 11.70 |
+| disp8 | 18.45 | 21.26 | 19.03 | 14.91 | 14.82 |
+| disp16 | 21.32 | 25.94 | 21.31 | 19.44 | 19.91 |
+| disp32 | 23.60 | 30.03 | 23.71 | 33.07 | 23.30 |
+| disp64 | 25.82 | 34.46 | 25.96 | 35.65 | 26.49 |
+| random | 52.99 | 76.96 | 53.17 | 66.69 | 53.58 |
+| tail10 | 25.05 | 8.27 | 8.38 | 17.09 | 8.31 |
+
+On `disp4`, `disp8`, and `disp16`, the gate routes to inversion-sensitive
+insertion and improves on the fastest of `std_sort` and Powersort by 33%, 20%,
+and 7%, respectively, in these measured medians. It falls back to the
+run-density portfolio at greater disorder. Across 40 input/seed pairs in the
+1m grid, regret versus the fastest of the three standalone algorithms had
+median 0.63%, mean 1.84%, and stayed within 5% in 32 pairs. On the separate
+200k held-out grid, median regret was 0.81% and 54 of 65 pairs stayed within
+5%. Relative outliers occur on sub-nanosecond monotone cases; the absolute
+differences there are small and sensitive to frequency variation.
+
+This is evidence for the *portfolio* on these CPUs and generators, not a
+general claim that inversion-sensitive sorting beats the standard library.
+The 16n movement budget, exact result oracle, and held-out distributions make
+the policy falsifiable; other block structure, key types, compilers, and
+frequency-stable hardware still need independent validation. The updated
+paper is `output/pdf/sorting_as_agent_research_v4.pdf`.
+
+
+## 18. Modern performance objective
+
+Comparison count remains a valuable theoretical bound and interpretable diagnostic, especially when comparisons are expensive. It is a weak standalone proxy for modern CPU latency: branches, instruction scheduling, cache behavior, element movement, allocation, compiler lowering, and frequency variation all affect wall-clock time. AlphaDev's sorting study directly optimizes measured latency and benchmarks across 100 machines. BlockQuicksort demonstrates how changing branch behavior changes runtime, while IPS4o analyzes branch prediction, cache efficiency, and memory transfers alongside work. The suitable workflow here is to use correctness/stability and explicit auxiliary-memory limits as constraints; optimize interleaved target-machine latency with per-workload regret and held-out inputs; and retain comparisons, inversion count, and run structure as explanatory features. When accessible, collect cycles, instructions, branch misses, cache misses, and bytes moved as diagnostic counters. Our host blocks perf counters at `perf_event_paranoid=4`, so this remains a limit on causal explanations.
+
+
+## 19. Deletion-backbone adaptive sorting (`backbone-v1`, 2026-10-11)
+
+Inversions, positional displacement, and natural runs leave another structural gap: a few misplaced extreme keys can create Θ(n) inversions and Θ(n) maximum rank displacement while deleting only a few elements leaves the remainder sorted. The measure `k = n - LNDS(a)` is the distance to monotonicity studied in the LIS literature [Saks and Seshadhri, SODA 2013](https://doi.org/10.1137/1.9781611973105.122). This study adds a sorting candidate parameterized by that known measure; it does not claim a new presortedness measure.
+
+`deletion_backbone_sort` scans into an in-place nondecreasing backbone and removes both endpoints whenever the current value is below the backbone top. Every such pair is an inversion and the pairs are endpoint-disjoint. Any nondecreasing subsequence must omit an endpoint of each pair, so if `q` values are removed then `q/2 <= k`, or `q <= 2k`. Sorting these outliers and merging backward gives O(n + q log(q+1)) work when the removal count remains below n/16, with O(q) auxiliary storage. Crossing the budget restores the processed prefix and calls `std::sort`. This gives a falsifiable mechanism, an exact fallback, and a worst-case general-sort escape. It is unstable.
+
+A separate `adaptive_window_heap` tested a maximum-rank-displacement window. A min-heap of width Δ+1 sorts inputs whose elements are all within Δ of final rank. Since Δ is unknown, the implementation widens and retries when emitted output violates order. The mechanism remained correct but was hundreds of ns/element on sparse extreme-key corruptions: a few outliers force its window toward the full array. It is retained as a negative candidate, not as a recommendation.
+
+The special `outpctP` generator selects floor(Pn/100) positions in a sorted unique-key array and places the largest keys in them. Removing marked positions leaves a sorted subsequence, so k is at most the marked count, while the moved extremes can have global rank displacement. Three grids contain 21,384 validated rows: the initial comparison grid (7,128), density training grid (6,336), and fresh-seed density grid (7,920). Each uses 21 serial, interleaved timing repetitions, two sizes (200k and 1m), CPU affinity 2, and three seeds; CPU frequency remains variable under powersave.
+
+On density training inputs with 1%, 2%, and 3% corruption, the candidate beats the fastest standalone sorter in all 18 size/seed cases, with median paired regret -52.16%. Independent seeds 7--9 reproduce the win in all 18 cases, median regret -49.85%. On the 1m set, medians are 5.59, 6.05, and 6.91 ns/element at the three rates, versus Powersort 6.83, 12.55, and 17.51. At 4% the fixed n/16 removal budget is exceeded and the fallback loses the advantage; the candidate is not a broad replacement. The fast path uses only about 2.3--3.1 comparisons per item, but the decision is based on elapsed time, not this count.
+
+The overflow-router experiment tested a frozen policy: if the budget is exceeded at or after `read >= n/4`, route the restored permutation to Powersort; otherwise use `std::sort`. In 11,880 validated rows with fresh seeds 21--23, the routed version beat the original fallback in all 42 cases at 4--10% outliers, with median paired runtime change -52.63%; its 1--3% fast path changed by a median -0.87%. It regressed on some ordinary controls and raised tracked auxiliary allocation to between 1.1 and 3.5 MiB on late fallbacks, against 0.75 MiB for the old fallback. It is a specialized speed policy, not a general replacement.
+
+## 20. Preserve-prefix overflow continuation (`backbone-preserve-v3`, 2026-10-11)
+
+The next mathematical ablation keeps completed work after late overflow. At overflow index `m = read + 1`, the scan has a sorted backbone of length `b`, an outlier vector of length `q`, and an untouched suffix of length `r = n - m`, with invariant `b + q = m`. The implementation sorts the outliers, merges them backward into the backbone to complete a sorted prefix, sorts only the untouched suffix with Powersort, and calls `std::inplace_merge` on the two sorted ranges. This separates repair cost (`q log q`), prefix assembly (`m`), run-adaptive suffix sorting (`r log r` worst case), and final merge. The last merge can use at most `N-1` comparisons with enough additional memory, otherwise `O(N log N)` comparisons per the C++ draft; its memory demand must be measured.
+
+The strict C++20 build and full self-test pass; all 1,004 tests for the new algorithm pass. The fresh benchmark uses seeds 31--33 and has 13,230 timing rows plus 630 count rows, all `ok=1`; timings use 21 serial interleaved repetitions on CPU 2 at both 200k and 1m. At 4--10% outlier density, preserve-v3 beats the previous route in 32/42 cases, with median paired change -9.15%. Regret against the fastest baseline has median -22.96%, mean -21.38%, and 95th percentile -0.25%. On 1--3% sparse corruption its median change versus the route is +0.67% over 18 cases.
+
+The new candidate exposes a clear latency/count inversion. At 4% corruption and n=1m, preserve-v3 runs in 6.65 ns/element, faster than route-v2 at 8.67, while using 3.75 comparisons/element versus 3.41. Count alone would pick the slower candidate. Preserve-v3 raises tracked heap to about 2.0--4.1 MiB on these late fallbacks, versus about 1.1--3.6 MiB for route-v2; it is still slower than the best baseline on some ordinary controls. This is a workload-specific latency improvement with a measurable memory tradeoff, not a universal sorting recommendation. Counter collection remains unavailable on this host (`perf_event_paranoid=4`), so no branch or cache mechanism is attributed. See `results/deletion_backbone_preserve_v3_analysis.md` and paper `output/pdf/sorting_as_agent_research_v7.pdf`.
+
+## 21. Rotation-merge memory/latency ablation and cost model (`backbone-rotate-v4`, 2026-10-11)
+
+Modern sorting engineering still analyzes comparison complexity, but practical performance also depends on branch prediction, cache transfers, element movement, allocation, compiler output, and available parallelism. BlockQuicksort explicitly reduces branches driven by comparison outcomes, while IPS4o combines branchless classification with cache-efficient block movement and evaluates across types, distributions, machines, and memory strategies. This motivates the study's evaluation model: correctness, stability requirements, and memory budgets are constraints; uninstrumented latency on the target CPU and workload-specific regret rank candidates. Comparator counts remain important for decision-tree lower bounds and expensive comparators but serve as explanatory measures on these primitive-key CPU runs. Performance counters were blocked (`perf_event_paranoid=4`), so no causal claim about branch/cache events is made. Sources: [BlockQuicksort](https://doi.org/10.1145/3274660), [IPS4o](https://doi.org/10.4230/LIPIcs.ESA.2017.9).
+
+The rotation ablation replaces only the final buffered merge with a symmetric binary-partition rotation merge. Its simple implementation has O(log n) recursion space, conservative O(n log n) comparisons and moves, and no linear merge buffer. It still retains the extracted-outlier vector and suffix-sort workspace. The implementation passed the strict build, full sort self-test, 7,203 direct merge cases against `std::inplace_merge`, and the fresh-seed benchmark grid of 720 count rows and 15,120 uninstrumented timing rows; all 15,840 rows have `ok=1`.
+
+The seeds 41--43 benchmark reruns buffered preserve on the same grid. At n=1m and 4% outliers, rotation merge has 3.64 comparisons/item versus 3.82, yet takes 14.69 versus 14.41 ns/element. Its peak tracked heap is 0.75 MiB versus 2.05 MiB. Across paired 4--10% outlier cases at 200k and 1m, rotation has median latency +4.37% versus buffered preserve and wins 4/42 cases. The comparison reduction does not offset additional rotation work in elapsed time; direct move counts were not instrumented, so that explanation remains consistent with the complexity analysis rather than experimentally proven. The result is a low-allocation option for a memory-constrained target, not a general speedup. See `results/deletion_backbone_rotate_v4_analysis.md` and paper `output/pdf/sorting_as_agent_research_v8.pdf`.

@@ -1,0 +1,16 @@
+algo,dist,n,seed,mode,rep,time_ns,comparisons,heap_aux_bytes,fj_stack_bound_bytes,merge_span_elems,ok,small_merge,fj_run_thresh,fj_max,build_id
+hybrid_ladder,random,1000000,1,time,0,147630503,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_ladder,random,1000000,1,time,1,182810434,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_ladder,random,1000000,1,time,2,179207923,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_ladder,random,1000000,1,time,3,157639330,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_ladder,random,1000000,1,time,4,136901518,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_gate,random,1000000,1,time,0,175998907,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_gate,random,1000000,1,time,1,173146619,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_gate,random,1000000,1,time,2,164541559,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_gate,random,1000000,1,time,3,163604629,0,0,273272,0,1,96,0,2048,ladder-v1
+hybrid_gate,random,1000000,1,time,4,173917920,0,0,273272,0,1,96,0,2048,ladder-v1
+powersort_fj,random,1000000,1,time,0,81592259,0,0,6204,0,1,96,0,2048,ladder-v1
+powersort_fj,random,1000000,1,time,1,81106779,0,0,6204,0,1,96,0,2048,ladder-v1
+powersort_fj,random,1000000,1,time,2,82739661,0,0,6204,0,1,96,0,2048,ladder-v1
+powersort_fj,random,1000000,1,time,3,81892827,0,0,6204,0,1,96,0,2048,ladder-v1
+powersort_fj,random,1000000,1,time,4,80762893,0,0,6204,0,1,96,0,2048,ladder-v1

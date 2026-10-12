@@ -109,6 +109,63 @@ GATE_ALGORITHMS = (
     "hybrid_gate",
 )
 
+LADDER_ALGORITHMS = (
+    "powersort",
+    "powersort_fj",
+    "hybrid_fjauto",
+    "hybrid_fjauto512",
+    "hybrid_fjauto1024",
+    "hybrid_fjauto2048",
+    "hybrid_gate",
+    "hybrid_ladder",
+)
+
+RUNTIME_GATE_ALGORITHMS = ("std_sort", "powersort", "hybrid_run_gate")
+RUNTIME_GATE_DISTRIBUTIONS = (
+    "random", "dup16", "sorted", "reversed", "runs32", "runs1024",
+    "nearly1", "tail10", "saw13", "organpipe", "disp64", "disp256",
+    "disp1024",
+)
+INVERSION_ALGORITHMS = (
+    "std_sort", "powersort", "hybrid_run_gate", "inversion_binsert",
+    "hybrid_inversion_gate",
+)
+INVERSION_DISTRIBUTIONS = (
+    "sorted", "reversed", "random", "dup16", "runs32", "runs1024",
+    "nearly1", "tail10", "saw13", "organpipe", "disp1", "disp2", "disp4",
+    "disp8", "disp16", "disp32", "disp64", "disp128", "disp256", "disp1024",
+)
+INVERSION_HELDOUT_ALGORITHMS = (
+    "std_sort", "powersort", "hybrid_run_gate", "inversion_binsert",
+    "hybrid_inversion_gate",
+)
+INVERSION_HELDOUT_DISTRIBUTIONS = (
+    "sorted", "disp4", "disp8", "disp16", "disp32", "disp64", "disp128",
+    "nearly1", "tail10", "runs32", "runs1024", "organpipe", "random",
+)
+INVERSION_SCALE_DISTRIBUTIONS = (
+    "sorted", "disp4", "disp8", "disp16", "disp32", "disp64", "random",
+    "tail10",
+)
+BACKBONE_ALGORITHMS = (
+    "std_sort", "powersort", "inversion_binsert", "hybrid_inversion_gate",
+    "adaptive_window_heap", "deletion_backbone_sort",
+)
+BACKBONE_ROUTE_ALGORITHMS = (
+    "std_sort", "powersort", "inversion_binsert", "hybrid_inversion_gate",
+    "deletion_backbone_sort", "deletion_backbone_route",
+)
+BACKBONE_PRESERVE_ALGORITHMS = BACKBONE_ROUTE_ALGORITHMS + (
+    "deletion_backbone_preserve",
+)
+BACKBONE_ROTATE_ALGORITHMS = BACKBONE_PRESERVE_ALGORITHMS + (
+    "deletion_backbone_rotate",
+)
+BACKBONE_GATE_ALGORITHMS = (
+    "std_sort", "powersort", "hybrid_run_gate", "hybrid_inversion_gate",
+    "deletion_backbone_preserve", "hybrid_backbone_gate",
+)
+
 PROFILES = {
     # Liu's learned and finite-prefix-tuned Shellsort sequence (arXiv:2609.29881)
     # against its closest practical baselines and two broad comparison sorts.
@@ -314,6 +371,231 @@ PROFILES = {
         count_seeds=(4, 5, 6),
         time_seeds=(4,),
     ),
+    # Multi-cap portfolio using a 1024-position inversion-rate ladder. The
+    # second profile holds out fresh seeds and off-grid displacement scales.
+    "ladder": Profile(
+        grids=(
+            Grid(
+                LADDER_ALGORITHMS,
+                ("random", "dup16", "dup96", "dup256", "runs1024", "nearly1",
+                 "tail10", "organpipe", "disp64", "disp128", "disp256",
+                 "disp512", "disp1024", "disp2048"),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+            Grid(
+                ("hybrid_ladder", "hybrid_gate", "powersort_fj"),
+                ("random",),
+                (1_000_000,),
+                5,
+                count=False,
+                time=True,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
+    "ladder-heldout": Profile(
+        grids=(
+            Grid(
+                LADDER_ALGORITHMS,
+                ("random", "dup48", "dup96", "dup192", "disp96", "disp192",
+                 "disp384", "disp768", "disp1536", "disp3072"),
+                (1_000_000,),
+                5,
+                count=True,
+                time=False,
+            ),
+        ),
+        count_seeds=(4, 5, 6),
+        time_seeds=(4,),
+    ),
+    # A runtime-oriented portfolio using stratified natural-run density to
+    # choose between std::sort and Powersort, with fresh-seed follow-up.
+    "run-gate": Profile(
+        grids=(
+            Grid(RUNTIME_GATE_ALGORITHMS, RUNTIME_GATE_DISTRIBUTIONS,
+                 (1_000_000,), 7),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
+    "run-gate-heldout": Profile(
+        grids=(
+            Grid(RUNTIME_GATE_ALGORITHMS, RUNTIME_GATE_DISTRIBUTIONS,
+                 (1_000_000,), 7),
+        ),
+        count_seeds=(4, 5, 6),
+        time_seeds=(4,),
+    ),
+    # Inversion-sensitive binary insertion on low-disorder rank perturbations.
+    # The implementation has a linear move budget and a stable-sort fallback.
+    "inversion-adaptivity": Profile(
+        grids=(
+            Grid(INVERSION_ALGORITHMS, INVERSION_DISTRIBUTIONS,
+                 (200_000,), 11),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1, 2, 3),
+    ),
+    # Fresh seeds and non-displacement inputs evaluate the inversion gate's
+    # generalization against its component runtime portfolio.
+    "inversion-heldout": Profile(
+        grids=(
+            Grid(INVERSION_HELDOUT_ALGORITHMS,
+                 INVERSION_HELDOUT_DISTRIBUTIONS, (200_000,), 11),
+        ),
+        count_seeds=(7, 8, 9),
+        time_seeds=(7, 8, 9, 10, 11),
+    ),
+    # Scale the inversion portfolio to the lab's one-million-element target.
+    "inversion-scale": Profile(
+        grids=(
+            Grid(INVERSION_ALGORITHMS, INVERSION_SCALE_DISTRIBUTIONS,
+                 (1_000_000,), 11),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1, 2, 3, 4, 5),
+    ),
+    # Deletion distance can be small while inversions and rank displacement
+    # are large. The two new adaptive candidates face sparse outlier inputs,
+    # established low-disorder cases, and broad baselines at two scales.
+    "deletion-backbone": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ALGORITHMS,
+                ("sorted", "reversed", "outliers1", "outliers8",
+                 "outliers64", "disp8", "disp16", "disp64", "random"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1, 2, 3),
+    ),
+    # Fresh seeds and novel outlier cardinalities test whether the deletion
+    # backbone result generalizes beyond its primary sparse-corruption grid.
+    "deletion-backbone-heldout": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ALGORITHMS,
+                ("outliers2", "outliers32", "outliers256", "disp12",
+                 "disp48", "nearly1", "tail10", "dup16", "random"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(7, 8, 9),
+        time_seeds=(7, 8, 9),
+    ),
+    # Sweep the number of outliers to locate where short-backbone extraction
+    # crosses over to run-adaptive and general-purpose sorting.
+    "deletion-backbone-density": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ALGORITHMS,
+                ("outpct1", "outpct2", "outpct3", "outpct4",
+                 "outpct6", "outpct8", "random", "sorted"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1, 2, 3),
+    ),
+    # Fresh seeds and off-grid corruption densities evaluate the fixed
+    # outlier budget without retuning it on evaluation inputs.
+    "deletion-backbone-density-heldout": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ALGORITHMS,
+                ("outpct1", "outpct2", "outpct3", "outpct5", "outpct7",
+                 "outpct9", "outpct10", "disp16", "tail10", "random"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(11, 12, 13),
+        time_seeds=(11, 12, 13),
+    ),
+    # Frozen fallback rule: late budget overflow routes to Powersort, early
+    # overflow keeps std::sort. Evaluate on entirely fresh seeds and include
+    # latency as the primary endpoint; comparison counts remain diagnostic.
+    "deletion-backbone-route-v2": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ROUTE_ALGORITHMS,
+                tuple(f"outpct{p}" for p in range(1, 11)) +
+                ("sorted", "random", "reversed", "tail10", "disp16"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(21, 22, 23),
+        time_seeds=(21, 22, 23),
+    ),
+    # Fresh-seed ablation preserves the sorted backbone after late overflow,
+    # sorts only the untouched suffix with Powersort, then merges both ranges.
+    "deletion-backbone-preserve-v3": Profile(
+        grids=(
+            Grid(
+                BACKBONE_PRESERVE_ALGORITHMS,
+                tuple(f"outpct{p}" for p in range(1, 11)) +
+                ("sorted", "random", "reversed", "tail10", "disp16"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(31, 32, 33),
+        time_seeds=(31, 32, 33),
+    ),
+    # Fresh-seed merge ablation replaces the buffered final merge with a
+    # recursive binary-partition/rotation merge to reduce temporary memory.
+    "deletion-backbone-rotate-v4": Profile(
+        grids=(
+            Grid(
+                BACKBONE_ROTATE_ALGORITHMS,
+                tuple(f"outpct{p}" for p in range(1, 11)) +
+                ("sorted", "random", "reversed", "tail10", "disp16"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(41, 42, 43),
+        time_seeds=(41, 42, 43),
+    ),
+    # Train a descent-density router over sparse extreme-key corruption and
+    # broad disorder, with held-out densities in a separate profile below.
+    "deletion-backbone-gate-v1": Profile(
+        grids=(
+            Grid(
+                BACKBONE_GATE_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40)) +
+                ("sorted", "reversed", "tail10", "disp16", "random"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(51, 52, 53),
+        time_seeds=(51, 52, 53),
+    ),
+    "deletion-backbone-gate-heldout-v1": Profile(
+        grids=(
+            Grid(
+                BACKBONE_GATE_ALGORITHMS,
+                tuple(f"outpct{p}" for p in
+                      (1, 5, 7, 9, 11, 14, 18, 22, 26, 36)) +
+                ("sorted", "reversed", "tail10", "disp16", "random", "dup16"),
+                (200_000, 1_000_000),
+                21,
+            ),
+        ),
+        count_seeds=(61, 62, 63),
+        time_seeds=(61, 62, 63),
+    ),
     # Duplicate-cardinality response of large-FJ blocks: the gate portfolio
     # across a dyadic dupK sweep at n=1m, anchored by dup16/dup256 identities
     # shared with the committed gate grid.
@@ -462,6 +744,14 @@ def valid_distribution(name: str) -> bool:
         if not re.fullmatch(r"[0-9]+", name[3:]):
             return False
         return 2 <= int(name[3:], 10) <= 1_000_000_000
+    if name.startswith("outliers"):
+        if not re.fullmatch(r"[0-9]+", name[8:]):
+            return False
+        return 0 <= int(name[8:], 10) <= 1_000_000_000
+    if name.startswith("outpct"):
+        if not re.fullmatch(r"[0-9]+", name[6:]):
+            return False
+        return 1 <= int(name[6:], 10) <= 100
     if not name.startswith("disp") or len(name) == 4:
         return False
     try:
@@ -766,10 +1056,20 @@ def run_timing_phase(
     build_id: str,
 ) -> list[list[str]]:
     rows: list[list[str]] = []
-    for done, case in enumerate(cases, start=1):
+    # Interleave algorithms on each input so one implementation does not get
+    # all of the early or late CPU-frequency/thermal states. Rotate the first
+    # algorithm by input group to avoid a fixed ordering advantage.
+    grouped: dict[tuple[str, int, int], list[Case]] = {}
+    for case in cases:
+        grouped.setdefault((case.distribution, case.n, case.seed), []).append(case)
+    ordered: list[Case] = []
+    for group_index, group in enumerate(grouped.values()):
+        offset = group_index % len(group)
+        ordered.extend(group[offset:] + group[:offset])
+    for done, case in enumerate(ordered, start=1):
         # Deliberately no executor here: exactly one timed subprocess is alive.
         rows.extend(run_case(binary, case, small_merge, fj_run_thresh, build_id))
-        progress(done, len(cases), "time (serial)")
+        progress(done, len(ordered), "time (interleaved serial)")
     return rows
 
 
