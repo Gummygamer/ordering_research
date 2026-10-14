@@ -2285,6 +2285,149 @@ void shellsort_tokuda(T* a, size_t n, C cmp) {
     shellsort_with_gaps(a, n, cmp, shell_tokuda_gaps(n));
 }
 
+// SkeletonSort (van der Hoog, Rotenberg, and Rutschmann, 2026). A skeleton
+// tree keeps only the branching nodes of the original balanced index tree.
+// Splitting the tree by random pivots lets partitioning skip whole subtrees
+// whose extrema lie on one side of the pivot. Equal-key leaves remain in
+// original index order, extending the paper's distinct-key algorithm stably.
+template <class T, class C>
+void skeleton_sort(T* a, size_t n, C cmp, uint64_t seed = 0x534b454c45544f4eULL) {
+    if (n < 2) return;
+
+    struct Node {
+        size_t left, right; // nil for leaves; left is also the free-list link
+        size_t item;        // original input index for a leaf
+        size_t count;
+        size_t min_item, max_item;
+    };
+    constexpr size_t nil = std::numeric_limits<size_t>::max();
+    std::vector<Node> nodes;
+    size_t free_head = nil;
+    auto allocate = [&]() {
+        if (free_head != nil) {
+            size_t id = free_head;
+            free_head = nodes[id].left;
+            return id;
+        }
+        nodes.emplace_back();
+        return nodes.size() - 1;
+    };
+    auto release = [&](size_t id) {
+        nodes[id].left = free_head;
+        free_head = id;
+    };
+    auto leaf = [&](size_t i) {
+        size_t id = allocate();
+        nodes[id] = {nil, nil, i, 1, i, i};
+        return id;
+    };
+    auto join = [&](size_t left, size_t right) {
+        if (left == nil) return right;
+        if (right == nil) return left;
+        size_t id = allocate();
+        size_t min_item = cmp(a[nodes[left].min_item], a[nodes[right].min_item])
+            ? nodes[left].min_item : nodes[right].min_item;
+        size_t max_item = cmp(a[nodes[left].max_item], a[nodes[right].max_item])
+            ? nodes[right].max_item : nodes[left].max_item;
+        nodes[id] = {left, right, nil,
+                     nodes[left].count + nodes[right].count, min_item, max_item};
+        return id;
+    };
+
+    // Build the perfect index tree over the next power of two, omitting
+    // padding leaves and shortcutting unary nodes to obtain its n-leaf
+    // skeleton. Indices, rather than pointers, survive pool growth.
+    auto build = [&](auto&& self, size_t lo, size_t hi) -> size_t {
+        if (lo >= n) return nil;
+        if (hi - lo == 1) return leaf(lo);
+        size_t mid = lo + (hi - lo) / 2;
+        size_t left = self(self, lo, mid);
+        size_t right = self(self, mid, hi);
+        return join(left, right);
+    };
+    size_t padded = 1;
+    while (padded < n) padded <<= 1;
+    size_t root = build(build, 0, padded);
+
+    struct Split { size_t less, equal, greater; };
+    auto split = [&](auto&& self, size_t id, size_t pivot) -> Split {
+        if (id == nil) return {nil, nil, nil};
+        const Node& node = nodes[id];
+        const T& low = a[node.min_item];
+        const T& high = a[node.max_item];
+        const T& p = a[pivot];
+        if (!cmp(low, p) && !cmp(p, low) &&
+            !cmp(high, p) && !cmp(p, high))
+            return {nil, id, nil};
+        if (cmp(p, low)) return {nil, nil, id};
+        if (cmp(high, p)) return {id, nil, nil};
+        if (node.left == nil) {
+            if (cmp(a[node.item], p)) return {id, nil, nil};
+            if (cmp(p, a[node.item])) return {nil, nil, id};
+            return {nil, id, nil};
+        }
+
+        size_t old_left = node.left;
+        size_t old_right = node.right;
+        Split l = self(self, old_left, pivot);
+        Split r = self(self, old_right, pivot);
+        Split out{join(l.less, r.less), join(l.equal, r.equal),
+                  join(l.greater, r.greater)};
+        release(id);
+        return out;
+    };
+
+    std::mt19937_64 rng(seed);
+    std::vector<size_t> order;
+    order.reserve(n);
+    auto emit_destroy = [&](auto&& self, size_t id) -> void {
+        if (id == nil) return;
+        size_t left = nodes[id].left;
+        size_t right = nodes[id].right;
+        if (left == nil) {
+            order.push_back(nodes[id].item);
+        } else {
+            self(self, left);
+            self(self, right);
+        }
+        release(id);
+    };
+    auto sort_tree = [&](auto&& self, size_t id) -> void {
+        if (id == nil) return;
+        std::uniform_int_distribution<size_t> choose(0, nodes[id].count - 1);
+        size_t rank = choose(rng);
+        size_t leaf_id = id;
+        while (nodes[leaf_id].left != nil) {
+            size_t left = nodes[leaf_id].left;
+            if (rank < nodes[left].count) leaf_id = left;
+            else { rank -= nodes[left].count; leaf_id = nodes[leaf_id].right; }
+        }
+        size_t pivot = nodes[leaf_id].item;
+        Split parts = split(split, id, pivot);
+        self(self, parts.less);
+        emit_destroy(emit_destroy, parts.equal);
+        self(self, parts.greater);
+    };
+    sort_tree(sort_tree, root);
+
+    // Apply the output permutation in place. The top bit marks visited
+    // permutation entries; a second n-element value buffer is unnecessary.
+    constexpr size_t visited = size_t(1) << (sizeof(size_t) * 8 - 1);
+    assert(n < visited);
+    for (size_t start = 0; start < n; ++start) {
+        if (order[start] & visited) continue;
+        T temp = a[start];
+        size_t cur = start;
+        for (;;) {
+            size_t next = order[cur] & ~visited;
+            order[cur] |= visited;
+            if (next == start) { a[cur] = temp; break; }
+            a[cur] = a[next];
+            cur = next;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // LSD radix sort (u64; non-comparison speed reference)
 // ---------------------------------------------------------------------------

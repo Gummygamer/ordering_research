@@ -183,6 +183,23 @@ GENERAL_PORTFOLIO_CONTROLS = (
 )
 
 PROFILES = {
+    # SkeletonSort's randomized adaptive comparison sort (arXiv:2610.15828)
+    # against the general-purpose and run-adaptive baselines.
+    "skeletonsort": Profile(
+        grids=(
+            Grid(
+                ("skeleton_sort", "std_sort", "powersort"),
+                (
+                    "random", "sorted", "reversed", "nearly1", "runs1024",
+                    "disp4", "disp16", "disp64", "dup16",
+                ),
+                (100_000,),
+                5,
+            ),
+        ),
+        count_seeds=(1, 2, 3),
+        time_seeds=(1,),
+    ),
     # Liu's learned and finite-prefix-tuned Shellsort sequence (arXiv:2609.29881)
     # against its closest practical baselines and two broad comparison sorts.
     "shellsort": Profile(

@@ -136,6 +136,17 @@ search or its asymptotic completion beyond practical input sizes. See
 `notes/research_notes.md` and `results/shellsort_2609_tables.md` for tests and
 comparisons at one and ten million elements.
 
+## SkeletonSort adaptive sorting study
+
+The lab also includes `skeleton_sort`, a C++ implementation of SkeletonSort
+from [Adaptive Sorting, also in the BST Model](https://arxiv.org/abs/2610.15828).
+It uses randomized pivot selection over a skeleton of a balanced index tree.
+This implementation preserves input order within equal-key groups, extending
+the paper's distinct-key algorithm. Its 100k comparison, timing, memory, and
+held-out results are in `results/skeletonsort_2610_tables.md`; on this machine
+the direct pointer-tree version is substantially slower and uses more memory
+than Powersort and `std_sort`.
+
 The `milestone_d310ed5_*.csv` and `prefixpair_de3837c_*.csv` files use this
 schema. The seven older tracked CSV files are explicitly legacy: five are
 headerless 11-column benchmark checkpoints and two are 7-column FJ profiles.
@@ -144,7 +155,7 @@ formats.
 
 ## Algorithms
 
-The registry includes 48 comparison algorithms plus one radix reference:
+The registry includes 53 comparison algorithms plus one radix reference:
 standard-library baselines (`std_sort`, `std_stable`),
 heapsort, three quicksort variants (`quick_mo3`, `dual_pivot`, `bl_quick`), a
 top-down mergesort, Timsort, Powersort, binary-insertion and Ford--Johnson

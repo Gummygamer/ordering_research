@@ -1,5 +1,34 @@
 # Results inventory
 
+## SkeletonSort adaptive sorting (`skeleton-2610`)
+
+- `skeletonsort_2610_all.csv`: 216 validated rows for `skeleton_sort`,
+  `std_sort`, and Powersort across nine 100k input patterns; three count seeds
+  and five serial timing repetitions at seed 1.
+- `skeletonsort_2610_heldout.csv`: 45 held-out count rows for seeds 4--6 on
+  random, `nearly1`, `disp16`, `disp64`, and `dup16` inputs.
+- `skeletonsort_2610_tables.md`: strict aggregation of all 261 rows.
+
+The build ID is `skeleton-2610`; every row has `ok=1`. The implementation is
+stable and passes duplicate-key stability checks, extending the paper's
+distinct-key algorithm. Reproduce the profile and held-out counts with:
+
+```sh
+python3 scripts/run_bench.py --profile skeletonsort \
+  --build-id skeleton-2610 --output results/skeletonsort_2610_all.csv
+python3 scripts/run_bench.py --profile skeletonsort --phase count \
+  --count-seeds 4,5,6 --dists random,nearly1,disp16,disp64,dup16 \
+  --sizes 100k --algos skeleton_sort,std_sort,powersort \
+  --build-id skeleton-2610 --output results/skeletonsort_2610_heldout.csv
+python3 scripts/aggregate.py results/skeletonsort_2610_all.csv \
+  results/skeletonsort_2610_heldout.csv \
+  --title 'SkeletonSort adaptive sorting (2610.15828)' \
+  -o results/skeletonsort_2610_tables.md
+```
+
+See research notes section 24 for the method, validation, and measured
+comparison/runtime/memory tradeoffs.
+
 ## Cost-aware sampled multi-cap ladder (`ladder-v1`)
 
 - `ladder_v1_counts.csv`: 336 count rows across eight algorithms, 14 inputs,

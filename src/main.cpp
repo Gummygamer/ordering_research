@@ -176,7 +176,7 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
 enum Algo {
     A_STD_SORT, A_STD_STABLE, A_HEAP, A_QMO3, A_DUAL, A_BLQ, A_MTD,
     A_TIM, A_POW, A_POW_FIXED, A_POW_FJ, A_PINGPONG_POW, A_DIRECTIONAL,
-    A_SHELL_LEARNED, A_SHELL_CIURA, A_SHELL_TOKUDA,
+    A_SHELL_LEARNED, A_SHELL_CIURA, A_SHELL_TOKUDA, A_SKELETON,
     A_HFJ8, A_HFJ12, A_HFJ16, A_HFJ21, A_HFJ32, A_HFJ42,
     A_HFJ56, A_HFJ62, A_HFJ64, A_HFJA62,
     A_HFJ85, A_HFJ123, A_HFJ128, A_HFJAUTO, A_HFJAUTO256, A_HFJAUTO512,
@@ -206,6 +206,7 @@ static const AlgoInfo ALGOS[] = {
     {"shell_learned", A_SHELL_LEARNED, false, true},
     {"shell_ciura", A_SHELL_CIURA, false, true},
     {"shell_tokuda", A_SHELL_TOKUDA, false, true},
+    {"skeleton_sort", A_SKELETON, true, true},
     {"hybrid_fj8",  A_HFJ8,       false, true},
     {"hybrid_fj12", A_HFJ12,      false, true},
     {"hybrid_fj16", A_HFJ16,      false, true},
@@ -251,7 +252,8 @@ static const AlgoInfo* find_algo(const std::string& name) {
 }
 
 template <class Cmp>
-static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
+static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
+                     u64 seed = 0x534b454c45544f4eULL) {
     switch (id) {
         case A_STD_SORT:   std::sort(a, a + n, cmp); break;
         case A_STD_STABLE: std::stable_sort(a, a + n, cmp); break;
@@ -269,6 +271,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp) {
         case A_SHELL_LEARNED: lab::shellsort_learned(a, n, cmp); break;
         case A_SHELL_CIURA: lab::shellsort_ciura(a, n, cmp); break;
         case A_SHELL_TOKUDA: lab::shellsort_tokuda(a, n, cmp); break;
+        case A_SKELETON:    lab::skeleton_sort(a, n, cmp, seed); break;
         case A_HFJ8:       lab::hybrid_fj<8>(a, n, cmp); break;
         case A_HFJ12:      lab::hybrid_fj<12>(a, n, cmp); break;
         case A_HFJ16:      lab::hybrid_fj<16>(a, n, cmp); break;
@@ -328,7 +331,7 @@ static bool selftest() {
             // (a) value correctness under RawLess
             {
                 std::vector<u64> work = input, ref = input;
-                run_algo(ai.id, work.data(), n, lab::RawLess{});
+                run_algo(ai.id, work.data(), n, lab::RawLess{}, seed);
                 std::sort(ref.begin(), ref.end());
                 ++checks;
                 if (work != ref) {
@@ -344,7 +347,7 @@ static bool selftest() {
                 for (size_t i = 0; i < n; ++i)
                     packed[i] = ((input[i] & 0xFFFFFull) << 32) | (u64)i;
                 std::vector<u64> work = packed, ref = packed;
-                run_algo(ai.id, work.data(), n, lab::KeyLess{});
+                run_algo(ai.id, work.data(), n, lab::KeyLess{}, seed);
                 std::stable_sort(ref.begin(), ref.end(), lab::KeyLess{});
                 ++checks;
                 if (work != ref) {
@@ -357,7 +360,7 @@ static bool selftest() {
             // (c) counting-comparator instantiation gives same result
             {
                 std::vector<u64> work = input, ref = input;
-                run_algo(ai.id, work.data(), n, lab::Counting<lab::RawLess>{});
+                run_algo(ai.id, work.data(), n, lab::Counting<lab::RawLess>{}, seed);
                 std::sort(ref.begin(), ref.end());
                 ++checks;
                 if (work != ref) ++fails;
@@ -987,7 +990,7 @@ static bool bench(const std::string& algo, const std::string& dist, size_t n,
 
     // warmup (also faults in pages)
     std::memcpy(work.data(), master.data(), n * sizeof(u64));
-    run_algo(ai->id, work.data(), n, lab::RawLess{});
+    run_algo(ai->id, work.data(), n, lab::RawLess{}, seed);
 
     if (mode == "time") {
         for (int r = 0; r < reps; ++r) {
@@ -995,7 +998,7 @@ static bool bench(const std::string& algo, const std::string& dist, size_t n,
             lab::g_fj_largest_block = 0;
             lab::g_fj_scratch_cap = 0;
             u64 t0 = now_ns();
-            run_algo(ai->id, work.data(), n, lab::RawLess{});
+            run_algo(ai->id, work.data(), n, lab::RawLess{}, seed);
             u64 t1 = now_ns();
             std::printf("%s,%s,%zu,%" PRIu64 ",time,%d,%" PRIu64
                         ",0,0,%zu,0,%d,%zu,%zu,%d,%s\n",
@@ -1012,7 +1015,7 @@ static bool bench(const std::string& algo, const std::string& dist, size_t n,
         size_t cur0 = g_alloc_cur;
         g_alloc_peak = g_alloc_cur;
         u64 t0 = now_ns();
-        run_algo(ai->id, work.data(), n, lab::Counting<lab::RawLess>{});
+        run_algo(ai->id, work.data(), n, lab::Counting<lab::RawLess>{}, seed);
         u64 t1 = now_ns();
         size_t aux = g_alloc_peak - cur0;
         std::printf("%s,%s,%zu,%" PRIu64 ",count,0,%" PRIu64 ",%" PRIu64

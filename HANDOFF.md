@@ -1,6 +1,6 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-09-30 after the learned Shellsort gap-sequence study. The earlier
+Updated 2026-10-14 after the SkeletonSort adaptive sorting study. The earlier
 duplicate-cardinality response (`498b627`) and pre-registered K=112 veto
 replacement (`97869f3`) remain part of the history. The filesystem and Git
 history remain authoritative; check both before acting.
@@ -22,7 +22,7 @@ CPython development design's varying floor/ceiling minrun targets and
 size-aware final collapse; `powersort_fixed` retains the older fixed-minrun
 ablation.
 
-The registry has 40 entries: 39 comparison algorithms and one LSD radix
+The registry has 54 entries: 53 comparison algorithms and one LSD radix
 speed reference. Ford--Johnson supports caps through 2048 with cap-sized
 scratch arrays and an extended Jacobsthal schedule. The benchmark schema is:
 
@@ -238,3 +238,17 @@ are in `results/shellsort_2609_all.csv`,
 gap-prefix checks. Results are mixed against Ciura/Tokuda at 1m; the single
 10m five-input sample used 1.58% fewer total comparisons than Ciura and 1.33%
 fewer than Tokuda, without reproducing the paper's full 25-task experiment.
+
+## 2026-10-14 SkeletonSort adaptive sorting study
+
+This heartbeat found van der Hoog, Rotenberg, and Rutschmann, *Adaptive
+Sorting, also in the BST Model* (arXiv:2610.15828, submitted 2026-10-11).
+The lab adds stable `skeleton_sort`, a C++ SkeletonSort implementation with
+a local duplicate-key extension. Its 100k primary grid and fresh-seed counts
+are in `results/skeletonsort_2610_all.csv`,
+`results/skeletonsort_2610_heldout.csv`, and
+`results/skeletonsort_2610_tables.md`. The full selftest passed. The direct
+pointer-tree implementation uses about 18.9 MB auxiliary heap at 100k and is
+substantially slower than Powersort and `std_sort` in these measurements; the
+paper gives theoretical analysis, not empirical performance results. See
+`notes/research_notes.md` section 24 for details and commands.
