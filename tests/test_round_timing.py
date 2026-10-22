@@ -19,11 +19,35 @@ class RoundTimingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.binary = Path(os.environ.get("SORTLAB_TEST_BINARY", ROOT / "build/sortlab_round"))
+        info = subprocess.run([str(cls.binary), "build-info"], capture_output=True, text=True)
+        cls.tracking = None
+        if info.returncode == 0:
+            metadata = dict(csv.reader(io.StringIO(info.stdout)))
+            cls.build_id = metadata["build_id"]
+            cls.tracking = metadata["allocation_tracking"]
+            return
         output = subprocess.check_output(
             [str(cls.binary), "bench", "std_sort", "sorted", "1", "0", "1", "count"],
             text=True,
         )
         cls.build_id = next(csv.reader(io.StringIO(output)))[-1]
+
+    def test_allocator_capability_and_resource_contract(self):
+        if self.tracking is None:
+            self.skipTest("legacy binary has no allocator capability metadata")
+        proc = subprocess.run(
+            [str(self.binary), "bench", "powersort", "sorted", "1000", "181", "1", "count"],
+            capture_output=True, text=True,
+        )
+        if self.tracking == "0":
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertEqual(proc.stdout, "")
+            self.assertIn("separate resource binary", proc.stderr)
+        else:
+            self.assertEqual(proc.returncode, 0)
+            row = next(csv.reader(io.StringIO(proc.stdout)))
+            self.assertEqual(int(row[7]), 999)
+            self.assertGreater(int(row[8]), 0)
 
     def rounds(self, names="std_sort,powersort,hybrid_general_portfolio", n=1000, reps=6):
         proc = subprocess.run(
@@ -112,6 +136,21 @@ class RoundTimingTests(unittest.TestCase):
         lo, hi = analyze_round_timing.bootstrap_interval(values, "candidate", 100,
                                                          random.Random(7))
         self.assertEqual((lo, hi), (100.0, 100.0))
+
+    def test_comparison_filter_preserves_complete_schedule_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "timing.csv"
+            with path.open("w", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(run_bench.CSV_HEADER)
+                writer.writerows(self.rounds())
+            proc = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/analyze_round_timing.py"), str(path),
+                 "--bootstrap", "100", "--exclude", "powersort"],
+                capture_output=True, text=True, check=True,
+            )
+            self.assertIn("Excluded baselines: `powersort`.", proc.stdout)
+            self.assertIn("std_sort", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,9 @@
 #ifndef SORTLAB_BUILD_ID
 #define SORTLAB_BUILD_ID "dev"
 #endif
+#ifndef SORTLAB_TRACK_ALLOCATIONS
+#define SORTLAB_TRACK_ALLOCATIONS 1
+#endif
 
 using u64 = uint64_t;
 
@@ -33,6 +36,7 @@ int lab::g_gate_choice = 0;
 static size_t g_alloc_cur = 0;
 static size_t g_alloc_peak = 0;
 
+#if SORTLAB_TRACK_ALLOCATIONS
 static void* tracked_alloc(size_t sz) {
     void* p = std::malloc(sz + 16);
     if (!p) std::abort();
@@ -65,6 +69,7 @@ void operator delete(void* p, size_t) noexcept { tracked_free(p); }
 void operator delete[](void* p, size_t) noexcept { tracked_free(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { tracked_free(p); }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { tracked_free(p); }
+#endif
 
 static uint64_t now_ns() {
     timespec ts;
@@ -1208,6 +1213,11 @@ static bool bench_round(const std::string& names, const std::string& dist,
 
 static bool bench(const std::string& algo, const std::string& dist, size_t n,
                   u64 seed, int reps, const std::string& mode) {
+    if (mode == "count" && !SORTLAB_TRACK_ALLOCATIONS) {
+        std::fprintf(stderr, "count/resource mode requires an allocation-tracked build; "
+                     "use a separate resource binary\n");
+        return false;
+    }
     const AlgoInfo* ai = find_algo(algo);
     std::vector<u64> master = gen_dist(dist, n, seed);
     std::vector<u64> reference = master;
@@ -1276,12 +1286,17 @@ int main(int argc, char** argv) {
                      " [small_merge] [fj_run_thresh]\n"
                      "  %s bench-round <algo,algo,...> <dist> <n> <seed> <reps>"
                      " [small_merge] [fj_run_thresh]\n"
-                     "  %s list | csv-header\n",
+                     "  %s list | csv-header | build-info\n",
                      argv[0], argv[0], argv[0], argv[0], argv[0]);
         return 2;
     }
     std::string cmd = argv[1];
     if (cmd == "selftest") return selftest() ? 0 : 1;
+    if (cmd == "build-info") {
+        std::printf("build_id,%s\nallocation_tracking,%d\n", SORTLAB_BUILD_ID,
+                    SORTLAB_TRACK_ALLOCATIONS != 0 ? 1 : 0);
+        return 0;
+    }
     if (cmd == "fjcounts" && argc <= 4) {
         int max_n = argc >= 3 ? std::atoi(argv[2]) : 128;
         int trials = argc >= 4 ? std::atoi(argv[3]) : 0;

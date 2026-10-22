@@ -7,6 +7,16 @@ history remain authoritative; check both before acting.
 
 ## Current runtime-portfolio state
 
+- SOTA search is active. Upstream PDQ, sequential IPS4o and x86-simd-sort
+  are pinned and audited. v16 fails the stronger baseline comparison.
+- Certified portfolio development screen: +0.34% median generic regret,
+  +144.91% worst; numeric references remain much faster on broad disorder.
+  No SOTA claim. See notes/sota_search_20261022.md and certified screen CSV.
+- Normal-allocator runtime and tracked resource binaries are now separate.
+  Use --allocation-tracking off --phase time for runtime; never interpret
+  native SIMD comparator counts as logical comparisons. Both release modes
+  passed full selftests and ten timing contract tests.
+
 - Work directly in the current chat and selected model. The user's new
   AGENTS instructions disable routine Jev routing and delegation.
 - `hybrid_general_portfolio` remains the general v16 candidate. The old

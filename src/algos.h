@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <limits>
@@ -755,6 +756,9 @@ template <int CAP, bool FIRST_PAIR_ORDERED, class T, class C>
 void fj_sort_block_capped_impl(T* a, size_t m, C cmp) {
     static_assert(CAP >= 2 && CAP <= FJ_MAX);
     assert(m <= (size_t)CAP);
+    // The bound must also hold without assertions: it makes the int-sized
+    // index initialization safe and explicit to release-build optimization.
+    if (m > static_cast<size_t>(CAP)) std::abort();
     if (m < 2) return;
     g_fj_largest_block = std::max(g_fj_largest_block, m);
     g_fj_scratch_cap = std::max(g_fj_scratch_cap, (size_t)CAP);

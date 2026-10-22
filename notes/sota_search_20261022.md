@@ -119,3 +119,32 @@ change, which is not part of this screen. Like earlier measurements, this
 screen uses raw comparators but still has allocation-tracking overrides.
 It is development evidence; later runtime evaluations must use a normal
 allocator and collect resources in a separate tracked build.
+
+## Screen results and allocator separation
+
+The frozen development screen completed all 27,600 validated rows. Against
+generic references (excluding numeric SIMD and radix), the certified portfolio
+has +0.34% median regret, +2.99% mean, +45.20% p95 and +144.91% worst;
+74/92 cases are within 5%. Its geometric mean time ratio to v16 is 0.85634.
+Against all references the median regret remains +154.36%, with 20/92 within
+5%. This is not a SOTA result. The two reports retain the same complete timing
+schedule; exclusions are applied only after schedule validation.
+
+Two-value inputs expose the IPS4o fallback: the worst generic case loses
+144.91% to branchless PDQ. One outpct1 case inherits a slow route (+131.05%
+versus direct concatenation). Displacement inputs also need routing review.
+These development cases can guide revisions but cannot serve as final tests.
+
+Runtime builds now support SORTLAB_TRACK_ALLOCATIONS=0 and report their
+capability through build-info. Such builds reject count/resource mode before
+generating input; the Python driver requires explicit --allocation-tracking
+off and --phase time. Resource measurements require a separate tracked
+binary. The screen above predates this separation and retains the tracked
+allocator, so its timing is development evidence only. Release builds also
+retain an explicit Ford--Johnson block capacity guard when assertions are
+disabled, resolving a strict compiler bounds warning without suppressions.
+
+Both normal-allocator and tracked builds passed the full selftest and all ten
+round timing/analysis contract tests, using GCC 15.2, -O3 -DNDEBUG
+-march=native and strict warnings. Timing and resource build IDs are
+certified-v1-runtime and certified-v1-resource respectively.

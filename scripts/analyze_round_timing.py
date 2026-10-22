@@ -83,6 +83,8 @@ def main():
     parser.add_argument("input", type=Path)
     parser.add_argument("--prior", type=Path, help="optional earlier timing CSV for matched-case comparison")
     parser.add_argument("--candidate", default="hybrid_general_portfolio")
+    parser.add_argument("--exclude", default="",
+                        help="comma-separated reference names to omit after validating complete rounds")
     parser.add_argument("--bootstrap", type=int, default=1000)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -90,6 +92,12 @@ def main():
         parser.error("--bootstrap must be at least 100")
     build, cases = load_cases(args.input)
     prior = load_cases(args.prior, balanced=False)[1] if args.prior else {}
+    excluded = set(filter(None, args.exclude.split(",")))
+    available = set().union(*(set(values) for values in cases.values()))
+    if args.candidate in excluded:
+        parser.error("the candidate cannot be excluded")
+    if excluded - available:
+        parser.error("unknown excluded algorithms: " + ", ".join(sorted(excluded - available)))
     rng = random.Random(20261022)
     lines = [f"# Round-timing analysis: {args.input.name}", "", f"Build: `{build}`.", "",
              "Times are median nanoseconds per element. Regret compares the candidate's median with the "
@@ -99,11 +107,17 @@ def main():
              "differences are not covered. Prior/new differences do not isolate timing-order effects.", "",
              "| Input | n | Seed | Best baseline | Candidate ns/item | Regret | Round-bootstrap 95% interval | Prior regret |",
              "|---|---:|---:|---|---:|---:|---:|---:|"]
+    if excluded:
+        lines[4:4] = ["Excluded baselines: " + ", ".join(f"`{name}`" for name in sorted(excluded)) + ".",
+                      "The complete unfiltered round schedule was validated before this comparison filter.", ""]
     all_regrets = []
     for case, values in cases.items():
+        values = {name: series for name, series in values.items() if name not in excluded}
         value, best, medians = regret(values, args.candidate)
         lo, hi = bootstrap_interval(values, args.candidate, args.bootstrap, rng)
-        old = f"{regret(prior[case], args.candidate)[0]:+.2f}%" if case in prior else "-"
+        old_values = {name: series for name, series in prior.get(case, {}).items()
+                      if name not in excluded}
+        old = f"{regret(old_values, args.candidate)[0]:+.2f}%" if old_values else "-"
         dist, n, seed = case
         lines.append(f"| {dist} | {n} | {seed} | {best} | {medians[args.candidate]/n:.2f} | "
                      f"{value:+.2f}% | [{lo:+.2f}%, {hi:+.2f}%] | {old} |")

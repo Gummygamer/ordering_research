@@ -1331,6 +1331,10 @@ def make_parser() -> argparse.ArgumentParser:
         "--cxxflag", action="append", default=[], help="additional compiler flag (repeatable)"
     )
     parser.add_argument("--no-build", action="store_true", help="use an existing binary")
+    parser.add_argument(
+        "--allocation-tracking", choices=("on", "off"), default="on",
+        help="off builds use the normal allocator and require --phase time; resources need a separate build",
+    )
     parser.add_argument("--output", type=Path, help="CSV path (must not already exist)")
     parser.add_argument(
         "--dry-run", action="store_true", help="build/probe and print the planned grid only"
@@ -1347,15 +1351,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--time-reps must be positive")
     if args.small_merge < 0 or args.fj_run_thresh < 0:
         parser.error("--small-merge and --fj-run-thresh must be non-negative")
+    if args.allocation_tracking == "off" and args.phase != "time":
+        parser.error("--allocation-tracking off requires --phase time")
 
     binary = args.binary if args.binary.is_absolute() else (Path.cwd() / args.binary).resolve()
     build_id = args.build_id or current_build_id()
     if not args.no_build:
-        build_sortlab(binary, args.cxx, args.cxxflag, build_id)
+        flags = list(args.cxxflag)
+        if args.allocation_tracking == "off":
+            flags.append("-DSORTLAB_TRACK_ALLOCATIONS=0")
+        build_sortlab(binary, args.cxx, flags, build_id)
     elif not binary.is_file():
         raise BenchmarkFailure(f"benchmark binary does not exist: {binary}")
 
     available_algorithms = probe_binary(binary)
+    info = run_checked((str(binary), "build-info"))
+    tracking = None
+    if info.returncode == 0:
+        metadata = dict(csv.reader(io.StringIO(info.stdout)))
+        tracking = metadata.get("allocation_tracking")
+        if tracking not in {"0", "1"}:
+            raise BenchmarkFailure("invalid allocation-tracking capability")
+    if tracking == "0" and args.phase != "time":
+        parser.error("this binary has no allocation tracker; use --phase time")
+    if tracking == "0" and args.allocation_tracking != "off":
+        parser.error("pass --allocation-tracking off explicitly for a normal-allocator binary")
+    if args.allocation_tracking == "off" and tracking != "0":
+        parser.error("--allocation-tracking off requires a verified normal-allocator binary")
     profile = PROFILES[args.profile]
     count_cases, timing_cases = make_cases(
         profile,
@@ -1382,6 +1404,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"profile={args.profile} build={build_id} count_jobs={len(count_cases)} "
         f"timing_jobs={len(timing_cases)} timing_rows={sum(c.reps for c in timing_cases)} "
         f"timing_order={args.timing_order} "
+        f"allocation_tracking={tracking if tracking is not None else 'legacy-on'} "
         f"output={output}",
         file=sys.stderr,
         flush=True,
