@@ -1070,6 +1070,13 @@ def run_case(
         )
 
     rows = [row for row in csv.reader(io.StringIO(proc.stdout)) if row]
+    return validate_case_rows(rows, case, small_merge, fj_run_thresh, build_id)
+
+
+def validate_case_rows(
+    rows: list[list[str]], case: Case, small_merge: int,
+    fj_run_thresh: int, build_id: str,
+) -> list[list[str]]:
     expected_rows = 1 if case.mode == "count" else case.reps
     if len(rows) != expected_rows:
         raise BenchmarkFailure(
@@ -1175,14 +1182,46 @@ def run_timing_phase(
     small_merge: int,
     fj_run_thresh: int,
     build_id: str,
+    timing_order: str = "round",
 ) -> list[list[str]]:
     rows: list[list[str]] = []
-    # Interleave algorithms on each input so one implementation does not get
-    # all of the early or late CPU-frequency/thermal states. Rotate the first
-    # algorithm by input group to avoid a fixed ordering advantage.
+    # Round mode alternates algorithms within each repetition; grouped mode
+    # preserves the older per-algorithm timing batches.
     grouped: dict[tuple[str, int, int], list[Case]] = {}
     for case in cases:
         grouped.setdefault((case.distribution, case.n, case.seed), []).append(case)
+    if timing_order == "round":
+        for done, group in enumerate(grouped.values(), start=1):
+            first = group[0]
+            if any(case.reps != first.reps for case in group):
+                raise BenchmarkFailure("round timing requires equal repetition counts per input")
+            names = [case.algorithm for case in group]
+            command = (str(binary), "bench-round", ",".join(names),
+                       first.distribution, str(first.n), str(first.seed), str(first.reps),
+                       str(small_merge), str(fj_run_thresh))
+            proc = run_checked(command)
+            if proc.returncode != 0:
+                raise BenchmarkFailure(
+                    f"round timing {format_case(first)} failed: "
+                    f"{proc.stderr.strip() or proc.stdout.strip()}")
+            group_rows = [row for row in csv.reader(io.StringIO(proc.stdout)) if row]
+            by_algorithm: dict[str, list[list[str]]] = {name: [] for name in names}
+            for row in group_rows:
+                if len(row) != len(CSV_HEADER) or row[0] not in by_algorithm:
+                    raise BenchmarkFailure("round timing emitted malformed or unexpected row")
+                by_algorithm[row[0]].append(row)
+            for case in group:
+                validate_case_rows(by_algorithm[case.algorithm], case,
+                                   small_merge, fj_run_thresh, build_id)
+            # Preserve round order so block-paired analysis can audit the schedule.
+            for rep in range(first.reps):
+                block = group_rows[rep * len(group):(rep + 1) * len(group)]
+                if ({row[0] for row in block} != set(names) or
+                        any(int(row[5]) != rep for row in block)):
+                    raise BenchmarkFailure("round timing emitted an incomplete or unordered round")
+            rows.extend(group_rows)
+            progress(done, len(grouped), "time (balanced rounds, serial)")
+        return rows
     ordered: list[Case] = []
     for group_index, group in enumerate(grouped.values()):
         offset = group_index % len(group)
@@ -1226,6 +1265,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--count-seeds", type=seed_list, help="override count seeds")
     parser.add_argument("--time-seeds", type=seed_list, help="override timing seeds")
     parser.add_argument("--time-reps", type=int, help="override repetitions per timing process")
+    parser.add_argument(
+        "--timing-order", choices=("round", "grouped"), default="round",
+        help="alternate algorithms every repetition, or retain legacy per-algorithm batches",
+    )
     parser.add_argument(
         "--jobs",
         type=int,
@@ -1295,6 +1338,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"profile={args.profile} build={build_id} count_jobs={len(count_cases)} "
         f"timing_jobs={len(timing_cases)} timing_rows={sum(c.reps for c in timing_cases)} "
+        f"timing_order={args.timing_order} "
         f"output={output}",
         file=sys.stderr,
         flush=True,
@@ -1318,6 +1362,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.small_merge,
             args.fj_run_thresh,
             build_id,
+            args.timing_order,
         )
     )
     write_csv(output, rows)

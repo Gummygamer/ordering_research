@@ -54,7 +54,7 @@ g++ -O3 -march=native -std=c++20 \
 ```
 
 The benchmark driver builds and probes the binary, runs count jobs in parallel,
-runs one timing subprocess at a time while interleaving algorithms by input,
+runs one timing subprocess at a time while alternating algorithms every round,
 validates every row, and refuses to overwrite result files. Its milestone profile uses three count seeds and five
 timing repetitions for the three headline algorithms:
 
@@ -85,6 +85,23 @@ merge when both runs were manufactured and the smaller side is below the
 cutoff. `fj_run_thresh` defaults to 0, which means use the block-size-dependent
 automatic threshold; a nonzero value overrides it. Run timing trials serially
 and summarize their median.
+
+The default `--timing-order round` runs all algorithms on an input in one
+process, copying the same original input before each sort. Input generation,
+copying, validation, and CSV printing are outside the timed region. Every
+complete cycle of K rounds places each of K algorithms in every execution
+position exactly once; a seeded shuffle changes the cyclic order between
+cycles. Repetition IDs identify paired rounds. Prefer a repetition count
+divisible by K when exact position balance matters.
+
+`--timing-order grouped` retains the earlier method, which batches all timing
+repetitions for one algorithm before starting the next. Earlier CSVs and paper
+versions called that method interleaved because algorithms alternated by input;
+their repetitions were not interleaved within an input. Those measurements do
+not have the same temporal pairing as the new method. Round mode reduces one
+source of drift but does not fix CPU frequency or eliminate cache and thermal
+effects. On Linux, `taskset -c 2 python3 scripts/run_bench.py ...` pins the driver
+and its children to CPU 2 without changing frequency settings.
 `fjcounts [max_n] [trials]` profiles randomized Ford--Johnson base cases,
 reports an *observed* maximum, checks every trial against the established
 MergeInsertion upper bound, and verifies the output. Its default is 128, and

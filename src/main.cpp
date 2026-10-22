@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <numeric>
 #include <random>
 #include <string>
 
@@ -973,6 +974,70 @@ static size_t fj_stack_bound_bytes() {
     return outer + depth * frame;
 }
 
+// All algorithms share the input and work buffer. A shuffled cyclic schedule
+// balances each algorithm's position over every complete algorithms.size()
+// rounds; reshuffle only between complete cycles, never inside a round.
+static bool bench_round(const std::string& names, const std::string& dist,
+                        size_t n, u64 seed, int reps) {
+    std::vector<const AlgoInfo*> algorithms;
+    size_t start = 0;
+    while (true) {
+        const size_t end = names.find(',', start);
+        const std::string name = names.substr(start, end - start);
+        if (name.empty()) {
+            std::fprintf(stderr, "empty algorithm in bench-round\n");
+            return false;
+        }
+        const AlgoInfo* ai = find_algo(name);
+        if (std::find(algorithms.begin(), algorithms.end(), ai) != algorithms.end()) {
+            std::fprintf(stderr, "duplicate algorithm in bench-round: %s\n", ai->name);
+            return false;
+        }
+        algorithms.push_back(ai);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    if (reps <= 0) {
+        std::fprintf(stderr, "bench-round repetitions must be positive\n");
+        return false;
+    }
+    const std::vector<u64> master = gen_dist(dist, n, seed);
+    std::vector<u64> reference = master;
+    std::sort(reference.begin(), reference.end());
+    std::vector<u64> work(n);
+    for (const AlgoInfo* ai : algorithms) {
+        std::copy(master.begin(), master.end(), work.begin());
+        run_algo(ai->id, work.data(), n, lab::RawLess{}, seed);
+        if (work != reference) return false;
+    }
+    std::vector<size_t> order(algorithms.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    std::mt19937_64 schedule_rng(seed ^ 0x524F554E44534F52ULL);
+    bool all_ok = true;
+    for (int r = 0; r < reps; ++r) {
+        const size_t round = static_cast<size_t>(r);
+        if (round % order.size() == 0)
+            std::shuffle(order.begin(), order.end(), schedule_rng);
+        for (size_t slot = 0; slot < order.size(); ++slot) {
+            const AlgoInfo* ai = algorithms[order[(round + slot) % order.size()]];
+            std::copy(master.begin(), master.end(), work.begin());
+            lab::g_fj_largest_block = 0;
+            lab::g_fj_scratch_cap = 0;
+            const u64 t0 = now_ns();
+            run_algo(ai->id, work.data(), n, lab::RawLess{}, seed);
+            const u64 elapsed = now_ns() - t0;
+            const int ok = work == reference ? 1 : 0;
+            all_ok &= ok != 0;
+            std::printf("%s,%s,%zu,%" PRIu64 ",time,%d,%" PRIu64
+                        ",0,0,%zu,0,%d,%zu,%zu,%d,%s\n",
+                        ai->name, dist.c_str(), n, seed, r, elapsed,
+                        fj_stack_bound_bytes(), ok, lab::g_small_merge,
+                        lab::g_fj_run_thresh, lab::FJ_MAX, SORTLAB_BUILD_ID);
+        }
+    }
+    return all_ok;
+}
+
 static bool bench(const std::string& algo, const std::string& dist, size_t n,
                   u64 seed, int reps, const std::string& mode) {
     const AlgoInfo* ai = find_algo(algo);
@@ -1037,8 +1102,10 @@ int main(int argc, char** argv) {
                      "usage:\n  %s selftest\n  %s fjcounts [max_n] [trials]\n"
                      "  %s bench <algo> <dist> <n> <seed> <reps> <time|count>"
                      " [small_merge] [fj_run_thresh]\n"
+                     "  %s bench-round <algo,algo,...> <dist> <n> <seed> <reps>"
+                     " [small_merge] [fj_run_thresh]\n"
                      "  %s list | csv-header\n",
-                     argv[0], argv[0], argv[0], argv[0]);
+                     argv[0], argv[0], argv[0], argv[0], argv[0]);
         return 2;
     }
     std::string cmd = argv[1];
@@ -1066,6 +1133,12 @@ int main(int argc, char** argv) {
         return bench(argv[2], argv[3], std::strtoull(argv[4], nullptr, 10),
                      std::strtoull(argv[5], nullptr, 10), std::atoi(argv[6]),
                      argv[7]) ? 0 : 1;
+    }
+    if (cmd == "bench-round" && argc >= 7 && argc <= 9) {
+        if (argc >= 8) lab::g_small_merge = std::strtoull(argv[7], nullptr, 10);
+        if (argc >= 9) lab::g_fj_run_thresh = std::strtoull(argv[8], nullptr, 10);
+        return bench_round(argv[2], argv[3], std::strtoull(argv[4], nullptr, 10),
+                           std::strtoull(argv[5], nullptr, 10), std::atoi(argv[6])) ? 0 : 1;
     }
     std::fprintf(stderr, "bad args\n");
     return 2;
