@@ -48,15 +48,22 @@ reduce overhead on ordered inputs. None established a consistent development
 gain; the registered version is v3 and is not promoted over v16. The rejected
 versions and their source checkpoints are documented in
 `notes/general_prefix_20261022.md`. Reserved heldout seeds 201--203 were not
-used. The paper generator builds the [updated report](output/pdf/sorting_as_agent_research_v13.pdf)
+used. The paper generator builds the [updated report](output/pdf/sorting_as_agent_research_v14.pdf)
 from the committed CSVs.
 
 The active SOTA search now includes pinned upstream pdqsort, sequential IPS4o,
-and native x86-simd-sort references. The first expanded audit shows that the
+native x86-simd-sort, and optional pinned VQSort references. The first expanded audit shows that the
 old v16 fallback is not SOTA: at 1m full-width random uint64 keys it measures
 about 24 ns/key, versus 19 for IPS4o and 5.6 for the specialized SIMD reference.
 See `notes/sota_search_20261022.md` and `third_party/README.md` for scope,
 versions, licenses, instrumentation limits, and the development protocol.
+
+The certified revision passes correctness checks but remains experimental.
+Its 17,664-row normal-allocator replication has +0.53% median generic regret
+and +173.30% when SIMD references are included; it is not SOTA. Runtime builds
+use `-DSORTLAB_TRACK_ALLOCATIONS=0` and the driver requires
+`--allocation-tracking off --phase time`. Collect resource measurements in a
+separate tracked build. See `third_party/highway/README.md` for VQSort linking.
 
 ## Build and run
 

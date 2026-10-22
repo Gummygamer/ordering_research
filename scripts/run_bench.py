@@ -203,6 +203,13 @@ CERTIFIED_SCREEN_DISTRIBUTIONS = SOTA_BASELINE_DISTRIBUTIONS + (
 )
 
 PROFILES = {
+    "simd-certified-screen-v1": Profile(
+        grids=(Grid(("std_sort", "powersort", "pdqsort_branchless", "ips4o",
+                     "x86_simd", "vqsort", "hybrid_quantile_concat",
+                     "hybrid_certified_portfolio", "simd_certified_u64"),
+                    CERTIFIED_SCREEN_DISTRIBUTIONS, (200_000, 1_000_000), 27),),
+        count_seeds=(331, 332), time_seeds=(331, 332),
+    ),
     "certified-runtime-v1": Profile(
         grids=(Grid(("std_sort", "powersort", "pdqsort_branchless", "ips4o",
                      "x86_simd", "vqsort", "hybrid_quantile_concat",

@@ -1,5 +1,20 @@
 # Results inventory
 
+## Stronger baseline and certified-partition studies (2026-10-22)
+
+- `sota_baseline_audit_v1_20261022.csv`: 10,080 validated rows with pinned
+  PDQ, sequential IPS4o and x86-simd-sort. v16 fails the stronger comparison.
+- `certified_portfolio_v1_screen_20261022.csv`: 27,600 validated development
+  rows, 23 distributions, seeds311--312, two sizes and twelve algorithms.
+  Generic median regret +0.34%; worst +144.91%. Tracked allocator timings.
+- `certified_portfolio_v1_runtime_20261022.csv`: 17,664 normal-allocator release
+  timing rows, seeds321--322, eight algorithms including pinned VQSort.
+  Generic median regret +0.53%, worst +111.99%; including SIMD +173.30%
+  median. All 92 cases are development evidence; no SOTA claim.
+- The screen/runtime `_generic_` and `_all_` reports validate full schedules
+  before selecting reference sets. Native intrinsic comparison counts are
+  unavailable. See `notes/sota_search_20261022.md` for freezes and protocols.
+
 ## General portfolios and timing-method audit (2026-10-22)
 
 - `general_v16_balanced_diagnostic_20261022.csv`: 4,116 timing rows, seven

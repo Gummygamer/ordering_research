@@ -183,3 +183,53 @@ cases choose the certified quantile path (choice21). All four dup2 cases
 choose the general IPS4o fallback (choice20). Displacement16 goes through
 the inherited inversion gate (choice16); displacement64 uses fallback20.
 These are route observations, not new timing results.
+
+## Numeric vector-certificate candidate, declared before testing
+
+The ascending-u64 candidate simd_certified_u64 preserves the earlier quantile
+pivot model and uses x86-simd-sort as its broad-disorder fallback. AVX-512
+compress stores partition each block into retained low keys and separate high
+keys. Removed lanes are zero-filled. Three masked shift/max rounds compute
+the retained inclusive prefix maximum, incorporating the previous block's
+maximum. A retained key smaller than that maximum disproves sortedness.
+The value in lane7 carries the maximum into the next block; empty retained
+blocks leave that carry unchanged. This works because u64 has zero as a
+lower bound; it is not a generic comparator implementation.
+
+After a successful certificate and high-count <=n/2, sort only the extracted
+keys and concatenate. If certification fails, append all extracted keys to
+restore the permutation and run full x86-simd-sort. Compact writes stay at
+or behind the loaded input block, preserving unread input. Scratch uses
+uninitialized trivial storage with checked capacity growth. The sample
+chooses work; it never certifies correctness. Duplicate-heavy samples use
+the inherited 4% equality threshold to select the SIMD fallback. Smooth
+sampled shapes use Powersort, which verifies actual runs. No novelty or
+SOTA claim is made before literature review and independent measurements.
+
+The declared development profile uses nine algorithms (the clean-runtime
+eight plus this candidate), the same 23 distributions, n=200k/1m, fresh
+seeds331--332 and 27 position-balanced rounds: 22,356 timing rows. Direct
+certificate tests must check its boolean result against a scalar oracle,
+exact sorted permutation, canaries, vector/tail boundaries, high-bit keys,
+zero/max keys, empty input and forced scratch growth. Full sorting selftests
+and the harness tests must pass before timing. No compilation or correctness
+jobs may overlap the in-progress clean-runtime baseline measurement.
+
+The clean-runtime baseline study completed all 17,664 validated rows. The
+certified generic portfolio has +0.53% median regret, -1.30% mean, +29.22%
+p95 and +111.99% worst, with 73/92 within 5%. Including both SIMD references
+gives +173.30% median and +571.52% worst, with 16/92 within 5%. These runs
+use different seeds and build conditions than the tracked screen, so changes
+in regret cannot be assigned solely to the allocator. Paper v14 reports the
+completed studies and explicitly withholds a SOTA claim. Its 25 rendered
+pages and new sections were visually inspected.
+
+The numeric prototype passed strict release compilation in both allocator
+modes, 1,136 sorting cases plus 2,040 direct certificate/oracle/canary checks,
+and eleven harness tests per mode. Runtime build simd-certified-v1-runtime
+is frozen at SHA256
+856bb11f081d747a139784ff4a721ef45b73fe7f554783156293ec7d977ee7a1.
+Resource build ID is simd-certified-v1-resource. Resource collection precedes
+serial normal-allocator timing; no other compilation or test jobs overlap
+measured timing. This is an ascending-u64 AVX-512F/DQ specialization; generic
+comparators and records are not supported by this entry.

@@ -21,7 +21,7 @@ from reportlab.platypus import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output/pdf/sorting_as_agent_research_v13.pdf"
+OUT = ROOT / "output/pdf/sorting_as_agent_research_v14.pdf"
 
 BLUE = colors.HexColor("#164E73")
 TEAL = colors.HexColor("#187C80")
@@ -101,6 +101,13 @@ balanced_diagnostic_results = round_case_results(balanced_diagnostic_cases, "hyb
 balanced_v16_results = round_case_results(balanced_v16_cases, "hybrid_general_portfolio")
 balanced_diagnostic_summary = regret_summary(balanced_diagnostic_results)
 balanced_v16_summary = regret_summary(balanced_v16_results)
+_, certified_runtime_cases = load_round_cases(
+    ROOT / "results/certified_portfolio_v1_runtime_20261022.csv")
+certified_generic_summary = regret_summary(round_case_results(
+    certified_runtime_cases, "hybrid_certified_portfolio", ("x86_simd", "vqsort")))
+certified_all_summary = regret_summary(round_case_results(
+    certified_runtime_cases, "hybrid_certified_portfolio"))
+
 prefix_training_cases = {
     version: load_round_cases(ROOT / f"results/general_prefix_v{version}_train_20261022.csv")[1]
     for version in (1, 2, 3)
@@ -572,15 +579,15 @@ story += [Spacer(1, 0.30*inch),
             "Subtitle"),
           HRFlowable(width="100%", thickness=2, color=TEAL, spaceAfter=16),
           P("Abstract", "H2Blue"),
-          P(f"Sorting supports agent-guided algorithm research through a crisp ordering contract, cheap exact output checks, and mathematically described structure such as runs, duplicates, inversions, and displacement. These properties support falsifiable hypotheses and counterexample-rich evaluation. This report studies sampled portfolios and verified-backbone repair, then audits the timing method: older measurements batched repetitions by algorithm, whereas a new harness alternates algorithms within each repetition using position-balanced cycles. Under that method, unchanged v16 has {balanced_v16_summary['median']:+.2f}% median latency regret against the fastest of six baselines over {balanced_v16_summary['cases']} fresh input/seed cases; {balanced_v16_summary['within5']} are within 5%, with p95 {balanced_v16_summary['p95']:+.2f}% and worst {balanced_v16_summary['worst']:+.2f}%. Three prefix-guided variants test whether cheaper recognition and reusable run certificates reduce overhead. None establishes a consistent development gain. One lowers comparison count and uses no tracked auxiliary heap on ordered controls yet loses elapsed time. Sorting therefore provides a tractable search space, while target-machine latency, resources, and reproducible measurement must decide which proposals survive.", "Abstract"),
+          P(f"Sorting supports agent-guided algorithm research through a crisp ordering contract, cheap exact output checks, and mathematically described structure such as runs, duplicates, inversions, and displacement. These properties support falsifiable hypotheses and counterexample-rich evaluation. This report studies sampled portfolios and verified-backbone repair, then audits the timing method: older measurements batched repetitions by algorithm, whereas a new harness alternates algorithms within each repetition using position-balanced cycles. Under that method, unchanged v16 has {balanced_v16_summary['median']:+.2f}% median latency regret against the fastest of six baselines over {balanced_v16_summary['cases']} fresh input/seed cases; {balanced_v16_summary['within5']} are within 5%, with p95 {balanced_v16_summary['p95']:+.2f}% and worst {balanced_v16_summary['worst']:+.2f}%. Three prefix-guided variants test whether cheaper recognition and reusable run certificates reduce overhead. None establishes a consistent development gain. One lowers comparison count and uses no tracked auxiliary heap on ordered controls yet loses elapsed time. A stronger baseline audit then exposes a large gap: the revised certified portfolio has {certified_generic_summary['median']:+.2f}% median regret against generic references but {certified_all_summary['median']:+.2f}% against references including two SIMD sorters in 92 normal-allocator cases. No SOTA claim is supported. Target-machine latency, resources, and reproducible measurement must decide which proposals survive.", "Abstract"),
           Spacer(1, 5)]
-key = Table([[P("LATEST RESULT", "TableHead"), P(f"Balanced-round validation of unchanged v16: {balanced_v16_summary['median']:+.2f}% median regret over {balanced_v16_summary['cases']} fresh cases, with {balanced_v16_summary['within5']} within 5%. Three prefix variants fail development acceptance despite correctness and resource improvements. Historical grouped timings are retained and clearly identified.", "BodyResearch")]], colWidths=[1.15*inch, 5.75*inch])
+key = Table([[P("LATEST RESULT", "TableHead"), P(f"The stronger baseline audit rejects a SOTA interpretation of v16. The certified revision has {certified_generic_summary['median']:+.2f}% median regret against generic references and {certified_all_summary['median']:+.2f}% including numeric SIMD references. Section 20 separates normal-allocator timing from tracked resource measurements.", "BodyResearch")]], colWidths=[1.15*inch, 5.75*inch])
 key.setStyle(TableStyle([("BACKGROUND", (0,0), (0,0), TEAL), ("BACKGROUND", (1,0), (1,0), PALE_TEAL), ("VALIGN",(0,0),(-1,-1),"MIDDLE"), ("BOX",(0,0),(-1,-1),0.5,TEAL), ("LEFTPADDING",(0,0),(-1,-1),9), ("RIGHTPADDING",(0,0),(-1,-1),9), ("TOPPADDING",(0,0),(-1,-1),9), ("BOTTOMPADDING",(0,0),(-1,-1),9)]))
 story += [key, Spacer(1, 10),
           P("Research scope", "H2Blue"),
           P("The paper treats an AI agent as a research collaborator that proposes and evaluates algorithm changes. It does not claim that an AI model is part of the runtime sorter, that the new portfolio is production ready, or that this local experiment establishes a universal speed ranking. The algorithm is an empirical candidate and a controlled negative result for comparison-count-only optimization.", "BodyResearch"),
           P("Timing-method correction, 22 October 2026", "H2Blue"),
-          P("Sections 4--17 retain their original observations. Their repetitions were batched by algorithm; prior versions used the term interleaved because algorithms alternated by input. Section 18 audits that distinction and evaluates unchanged v16 using repetitions alternated within each input. Section 19 evaluates a separate prefix-guided candidate. These schedules describe different measurement conditions; changes between runs cannot be assigned solely to scheduling.", "BodyResearch"),
+          P("Sections 4--17 retain their original observations. Their repetitions were batched by algorithm; prior versions used the term interleaved because algorithms alternated by input. Section 18 audits that distinction and evaluates unchanged v16 using repetitions alternated within each input. Section 19 evaluates a separate prefix-guided candidate. Section 20 adds stronger upstream baselines and normal-allocator timing; the earlier six-baseline results are not SOTA evidence. These schedules describe different measurement conditions; changes between runs cannot be assigned solely to scheduling.", "BodyResearch"),
           PageBreak()]
 
 story += [P("1. Why sorting supports agent-guided discovery", "H1Blue"),
@@ -952,7 +959,36 @@ story += [P(f"On the 1m count grid, the gate selected insertion in {scale_routes
           P("Earlier gates: <tt>deletion-backbone-gate-v1</tt> (train 51--53) and <tt>deletion-backbone-gate-heldout-v1</tt> (61--63); sequential profiles <tt>descent-portfolio-train-v1</tt> (71--73) and <tt>descent-portfolio-heldout-v1</tt> (81--83). Timing uses 21 grouped serial repetitions on CPU 2.", "BodyResearch"),
           P("Quantile profiles: <tt>quantile-backbone-train-v1</tt> (111--113) and <tt>quantile-backbone-heldout-v1</tt> (121--123), at 200k/1m with 21 grouped repetitions on CPU 2. All count and timing rows passed reference validation.", "BodyResearch"),
           P("Original v16: <tt>general_portfolio_v16_heldout_1m.csv</tt>, build <tt>general-portfolio-v16</tt>, seeds 171--173, n=1m, seven algorithms, 21 grouped repetitions. Its selftest includes 21 portfolio correctness cases and 16 route/accounting checks. The newer round schedule and files are described in Section 18.", "BodyResearch"),
+          Spacer(1, 9)]
+
+story += [PageBreak(), P("20. Stronger baselines and certified partitioning", "H1Blue"),
+          P("The preceding six-baseline study was a local comparison. A stronger audit pins unmodified upstream PDQsort, sequential IPS4o, and x86-simd-sort [18-20]. Across 48 development cases, v16 has +20.21% median regret against generic comparator references, and +232.82% when SIMD/radix references are included. The CPU is an Intel i7-11800H with native AVX-512 enabled; these are single-host results. No SOTA conclusion follows from the earlier small baseline set.", "BodyResearch"),
+          P("An exact concatenation invariant", "H2Blue"),
+          P("Partition by a pivot into retained L={x:x&lt;p} and extracted H={x:not(x&lt;p)}, preserving the retained order. Under a strict weak order, every key in L precedes every key in H. If an exact scan certifies L nondecreasing, sorting H and concatenating L,H produces a sorted permutation. The former backward merge is unnecessary. Failure of the certificate requires restoring the permutation and calling a general sorter. Sampling chooses whether to try the work; it does not prove sortedness. This invariant supplies a useful implementation change without establishing novelty of the general idea.", "BodyResearch"),
+          P("The isolated hybrid_quantile_concat changes only that final operation. The experimental hybrid_certified_portfolio also replaces broad-disorder fallbacks with sequential IPS4o for n>=131072 and PDQ below that cutoff, and uses PDQ on extracted keys. Strings, reverse comparators, records with payload identities, and extraction accounting pass correctness checks. Nontrivial objects bypass bytewise compaction. This is a credited composition, with no evidence yet of improved noninteger performance.", "BodyResearch"),
+          P("The first 27,600-row development screen retains the tracked allocator used in earlier studies. The certified portfolio has +0.34% median generic regret and +144.91% worst; its geometric mean time ratio to v16 is 0.85634. Including numeric SIMD/radix references gives +154.36% median regret. Two-value inputs and an inherited Powersort misroute expose failures, retained in the dataset.", "BodyResearch"),
+          P("Normal-allocator runtime replication", "H2Blue"),
+          P(f"A separate release build removes global allocation-tracking overrides; a tracked binary remains necessary for resource measurements. The driver checks build capability and rejects count mode in the normal-allocator binary. VQSort [21] is linked from pinned Highway revision 8fd66948f4555b022328b42120dbce9315847493, using official Release libraries and native optimization. Unchanged routes are evaluated on 23 distributions, n=200k/1m, seeds321--322, eight algorithms and 24 position-balanced rounds: 17,664 validated timing rows. Generic regret is {certified_generic_summary['median']:+.2f}% median, {certified_generic_summary['p95']:+.2f}% p95, {certified_generic_summary['worst']:+.2f}% worst, with {certified_generic_summary['within5']}/92 cases within 5%. Including SIMD gives {certified_all_summary['median']:+.2f}% median and {certified_all_summary['worst']:+.2f}% worst, with {certified_all_summary['within5']}/92 within 5%.", "BodyResearch")]
+
+def certified_ns(algo, dist):
+    return statistics.median(statistics.median(values[algo]) / n
+        for (d, n, seed), values in certified_runtime_cases.items()
+        if d == dist and n == 1_000_000)
+
+story += [PageBreak(), P("20.1. Runtime, contract, and remaining work", "H1Blue"),
+          table([["Input", "Certified", "PDQ BL", "IPS4o", "x86 SIMD", "VQSort"]] +
+                [[dist] + [f"{certified_ns(algo, dist):.2f}" for algo in
+                 ("hybrid_certified_portfolio", "pdqsort_branchless", "ips4o", "x86_simd", "vqsort")]
+                 for dist in ("random", "uniform64", "uniform32", "highbits32", "sorted", "reversed", "equal", "nearly1", "outpct1", "outpct14", "dup2", "disp16")],
+                [1.05*inch] + [0.97*inch]*5, font=7.2, pad=3),
+          P("Table 15. Normal-allocator nanoseconds per key at n=1m; each entry is the median of two seed medians. Regret above instead selects the fastest baseline separately per input/seed. No aggregate table entry is a cross-host ranking.", "SmallResearch"),
+          P("Why comparison count is a diagnostic", "H2Blue"),
+          P("Primitive SIMD sorting compares multiple lanes per instruction. Counting scalar comparator callbacks therefore misses intrinsic comparisons entirely: zero recorded calls is not zero logical comparisons. Both SIMD references are explicitly labeled uninstrumented in this metric. Elapsed time measures the user-visible operation; throughput, peak memory and allocation behavior add relevant costs. Branch and cache counters, bytes transferred, frequency effects and energy remain unmeasured. For expensive user comparators, comparison count can still be informative, so the operation and key/comparator contract must be declared rather than dismissing the metric universally [3,18,21,22].", "BodyResearch"),
+          P("Measurement limits and next hypothesis", "H2Blue"),
+          P("Position-balanced cycles do not balance predecessor pairs; AVX-512 frequency state can affect following scalar calls. Bootstrap intervals describe within-run uncertainty and do not account for host drift. Governor, compiler, ISA and randomized upstream pivots limit reproducibility. Fresh seeds here test allocator/build sensitivity on development distributions; they are not a final untouched workload suite. A numeric-only vectorized partition/certificate candidate is now proposed, but this paper does not report its performance. The search must also broaden competitors, sizes, key contracts, independent repetitions and hardware before claiming SOTA.", "BodyResearch"),
+          P("Reproduce using certified-runtime-v1 with --phase time --allocation-tracking off and a binary linked as documented in third_party/highway. The committed runtime CSV, both comparison reports, pinned source manifests and notes/sota_search_20261022.md preserve the measurements and failures. Normal-allocator and tracked release builds pass full correctness suites; eleven harness checks cover schedule validation, allocator capability and library link order.", "BodyResearch"),
           Spacer(1, 9), P("References", "H1Blue")]
+
 
 refs = [
     '[1] D. J. Mankowitz et al. “Faster sorting algorithms discovered using deep reinforcement learning.” <i>Nature</i> 618, 257-263 (2023). <link href="https://doi.org/10.1038/s41586-023-06004-9" color="#187C80">doi:10.1038/s41586-023-06004-9</link>.',
@@ -972,6 +1008,13 @@ refs = [
     '[15] ISO/IEC JTC1/SC22/WG21. “C++ Working Draft, [alg.merge].” <link href="https://eel.is/c++draft/alg.merge" color="#187C80">eel.is/c++draft/alg.merge</link>.',
     '[16] Z. Dudzinski and A. Dydek. “A Stable Minimum Storage Merging Algorithm.” <i>Information Processing Letters</i> 12(1), 1981. <link href="https://doi.org/10.1016/0020-0190(81)90065-X" color="#187C80">doi:10.1016/0020-0190(81)90065-X</link>.',
     '[17] Google Benchmark contributors. “Random Interleaving.” Project documentation, accessed 22 October 2026. <link href="https://github.com/google/benchmark/blob/main/docs/random_interleaving.md" color="#187C80">Google Benchmark documentation</link>.',
+]
+refs += [
+    '[18] O. Peters. PDQsort upstream source, revision b1ef26a55cdb60d236a5cb199c4234c704f46726. <link href="https://github.com/orlp/pdqsort" color="#187C80">github.com/orlp/pdqsort</link>.',
+    '[19] IPS4o contributors. Upstream sequential implementation, revision 08a5b926ee65cef19139057c6bde02bb5542c1cb. <link href="https://github.com/ips4o/ips4o" color="#187C80">github.com/ips4o/ips4o</link>.',
+    '[20] x86-simd-sort contributors. Upstream static numeric API, revision 6e059b14975df2e3c74260ec905167a1be5a34ca. <link href="https://github.com/numpy/x86-simd-sort" color="#187C80">github.com/numpy/x86-simd-sort</link>.',
+    '[21] M. Blacher, J. Giesen, P. Sanders and J. Wassenberg. Vectorized and performance-portable Quicksort (2022). <link href="https://arxiv.org/abs/2205.05982" color="#187C80">arXiv:2205.05982</link>. Highway source and benchmark documentation accompany the pinned implementation.',
+    '[22] M. Blacher, J. Giesen and L. Kuehne. Fast and Robust Vectorized In-Place Sorting of Primitive Types. SEA 2021, 3:1-3:16. <link href="https://doi.org/10.4230/LIPIcs.SEA.2021.3" color="#187C80">doi:10.4230/LIPIcs.SEA.2021.3</link>.',
 ]
 for ref in refs:
     story.append(P(ref, "Ref"))

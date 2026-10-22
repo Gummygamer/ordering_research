@@ -1,11 +1,21 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-10-22 after the timing-method audit and prefix experiments. The earlier
+Updated 2026-10-22 after the stronger-baseline runtime audit and numeric prototype. The earlier
 duplicate-cardinality response (`498b627`) and pre-registered K=112 veto
 replacement (`97869f3`) remain part of the history. The filesystem and Git
 history remain authoritative; check both before acting.
 
 ## Current runtime-portfolio state
+
+- Latest paper is v14 (25 pages), with the expanded audit and normal-allocator
+  results: +0.53% generic median regret, +173.30% including SIMD; no SOTA.
+- New ascending-u64 AVX-512 simd_certified_u64 vectorizes partition and exact
+  retained-order certification, sorts extracted high keys and concatenates.
+  Failure restores the permutation then uses x86-simd-sort. Both allocator
+  modes pass full selftests, 2,040 direct oracle/canary checks and eleven
+  harness checks. The simd-certified-screen-v1 profile is declared before
+  timing: seeds331--332, 23 distributions, two sizes, nine algorithms,27rounds.
+  Check running process handles/logs before starting other CPU-heavy jobs.
 
 - SOTA search is active. Upstream PDQ, sequential IPS4o and x86-simd-sort
   are pinned and audited. v16 fails the stronger baseline comparison.
@@ -40,7 +50,7 @@ history remain authoritative; check both before acting.
   accounting checks (including unsampled disorder and reverse comparator),
   and eight timing/analysis tests passed. Preserve count-mode timing exclusion.
 - See `notes/timing_method_20261022.md`, `notes/general_prefix_20261022.md`,
-  the matching dated CSV/Markdown results, and the v13 paper generator.
+  the matching dated CSV/Markdown results, and the v14 paper generator.
   Substantial changes have been committed and pushed; verify latest Git state.
 
 ## Historical state

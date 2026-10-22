@@ -1,6 +1,7 @@
 // main.cpp — harness: generators, metrics (time / comparisons / aux memory),
 // selftest, Ford–Johnson count validation, bench CLI.
 #include "algos.h"
+#include "simd_certified.h"
 
 #include <cinttypes>
 #include <cmath>
@@ -208,6 +209,9 @@ enum Algo {
 #ifdef SORTLAB_HAVE_VQSORT
     A_VQSORT,
 #endif
+#ifdef SORTLAB_HAVE_SIMD_CERTIFIED
+    A_SIMD_CERTIFIED,
+#endif
     A_RADIX,
 };
 struct AlgoInfo {
@@ -281,6 +285,9 @@ static const AlgoInfo ALGOS[] = {
 #endif
 #ifdef SORTLAB_HAVE_VQSORT
     {"vqsort", A_VQSORT, false, true, true},
+#endif
+#ifdef SORTLAB_HAVE_SIMD_CERTIFIED
+    {"simd_certified_u64", A_SIMD_CERTIFIED, false, true, true},
 #endif
     {"radix_lsd",   A_RADIX,      false, false},
 };
@@ -364,6 +371,9 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
         case A_VQSORT:
             if (n > 1) hwy::VQSort(a, n, hwy::SortAscending{});
             break;
+#endif
+#ifdef SORTLAB_HAVE_SIMD_CERTIFIED
+        case A_SIMD_CERTIFIED: lab::simd_certified_u64(a, n); break;
 #endif
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
@@ -1080,6 +1090,47 @@ static bool selftest() {
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }
+    #ifdef SORTLAB_HAVE_SIMD_CERTIFIED
+    {
+        std::mt19937_64 rng(0xCE471F1EDULL);
+        size_t checks = 0, fails = 0;
+        std::vector<size_t> certificate_sizes;
+        for (size_t n = 0; n <= 96; ++n) certificate_sizes.push_back(n);
+        for (size_t n : {127u, 128u, 129u, 257u, 1024u}) certificate_sizes.push_back(n);
+        for (size_t n : certificate_sizes) for (size_t trial = 0; trial < 4; ++trial) {
+            for (u64 pivot : {u64(0), u64(1), u64(7), u64(1) << 63, UINT64_MAX}) {
+                std::vector<u64> original(n), retained;
+                for (u64& key : original) {
+                    key = rng();
+                    if (trial == 1) key %= 11;
+                    if (trial == 2) key |= u64(1) << 63;
+                    if (trial == 3) key = rng() % 2 ? 0 : UINT64_MAX;
+                }
+                if (trial == 2) std::sort(original.begin(), original.end());
+                for (u64 key : original) if (key < pivot) retained.push_back(key);
+                const bool expected_success = std::is_sorted(retained.begin(), retained.end()) &&
+                    n - retained.size() <= n / 2;
+                std::vector<u64> expected = original;
+                std::sort(expected.begin(), expected.end());
+                constexpr u64 CANARY = 0xA55A0123456789ABULL;
+                std::vector<u64> guarded(n + 16, CANARY);
+                std::copy(original.begin(), original.end(), guarded.begin() + 8);
+                const bool success = lab::certified_partition_u64(
+                    guarded.data() + 8, n, pivot, 1);
+                ++checks;
+                if (success != expected_success ||
+                    !std::equal(expected.begin(), expected.end(), guarded.begin() + 8) ||
+                    !std::all_of(guarded.begin(), guarded.begin() + 8,
+                                 [=](u64 key) { return key == CANARY; }) ||
+                    !std::all_of(guarded.end() - 8, guarded.end(),
+                                 [=](u64 key) { return key == CANARY; })) ++fails;
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "simd_cert",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    #endif
     return all_ok;
 }
 
