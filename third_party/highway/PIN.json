@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/google/highway",
+  "revision": "8fd66948f4555b022328b42120dbce9315847493",
+  "retrieved": "2026-10-22",
+  "source_vendored": false,
+  "interface": "hwy::VQSort(uint64_t*, size_t, hwy::SortAscending)"
+}

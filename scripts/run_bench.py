@@ -203,6 +203,13 @@ CERTIFIED_SCREEN_DISTRIBUTIONS = SOTA_BASELINE_DISTRIBUTIONS + (
 )
 
 PROFILES = {
+    "certified-runtime-v1": Profile(
+        grids=(Grid(("std_sort", "powersort", "pdqsort_branchless", "ips4o",
+                     "x86_simd", "vqsort", "hybrid_quantile_concat",
+                     "hybrid_certified_portfolio"),
+                    CERTIFIED_SCREEN_DISTRIBUTIONS, (200_000, 1_000_000), 24),),
+        count_seeds=(321, 322), time_seeds=(321, 322),
+    ),
     "certified-screen-v1": Profile(
         grids=(Grid(CERTIFIED_SCREEN_ALGORITHMS, CERTIFIED_SCREEN_DISTRIBUTIONS,
                     (200_000, 1_000_000), 24),),
@@ -953,7 +960,8 @@ def build_id_value(text: str) -> str:
     return text
 
 
-def build_sortlab(binary: Path, cxx: str, extra_flags: Sequence[str], build_id: str) -> None:
+def build_sortlab(binary: Path, cxx: str, extra_flags: Sequence[str], build_id: str,
+                  link_flags: Sequence[str] = ()) -> None:
     binary.parent.mkdir(parents=True, exist_ok=True)
     compiler = shlex.split(cxx)
     if not compiler:
@@ -968,6 +976,7 @@ def build_sortlab(binary: Path, cxx: str, extra_flags: Sequence[str], build_id: 
         "-o",
         str(binary),
         str(SOURCE),
+        *link_flags,
     )
     print("build:", shlex.join(command), file=sys.stderr, flush=True)
     proc = subprocess.run(command, cwd=ROOT, text=True, check=False)
@@ -1330,6 +1339,10 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cxxflag", action="append", default=[], help="additional compiler flag (repeatable)"
     )
+    parser.add_argument(
+        "--ldflag", action="append", default=[],
+        help="linker flag or library appended after source (repeatable)",
+    )
     parser.add_argument("--no-build", action="store_true", help="use an existing binary")
     parser.add_argument(
         "--allocation-tracking", choices=("on", "off"), default="on",
@@ -1360,7 +1373,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         flags = list(args.cxxflag)
         if args.allocation_tracking == "off":
             flags.append("-DSORTLAB_TRACK_ALLOCATIONS=0")
-        build_sortlab(binary, args.cxx, flags, build_id)
+        build_sortlab(binary, args.cxx, flags, build_id, args.ldflag)
     elif not binary.is_file():
         raise BenchmarkFailure(f"benchmark binary does not exist: {binary}")
 

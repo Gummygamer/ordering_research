@@ -148,3 +148,38 @@ Both normal-allocator and tracked builds passed the full selftest and all ten
 round timing/analysis contract tests, using GCC 15.2, -O3 -DNDEBUG
 -march=native and strict warnings. Timing and resource build IDs are
 certified-v1-runtime and certified-v1-resource respectively.
+
+## Clean-runtime comparison declaration
+
+Before collecting its timings, certified-runtime-v1 fixes eight algorithms
+(std_sort, powersort, branchless PDQ, IPS4o, x86-simd-sort, VQSort, isolated
+quantile concatenation, and certified portfolio), the previous 23 development
+distributions, n=200k/1m, seeds321--322 and 24 position-balanced rounds.
+This produces 17,664 timing rows in a normal-allocator release binary.
+The algorithms and routing thresholds are unchanged from the earlier screen.
+These fresh seeds check sensitivity to the allocator/build protocol; this is
+still development evidence, not a final independent SOTA assessment.
+
+VQSort is optionally linked from unmodified Highway revision
+8fd66948f4555b022328b42120dbce9315847493 using its official Release
+hwy_contrib target, GCC and -march=native. The lab uses -DNDEBUG as well.
+The default build remains independent of this external library. As with
+x86-simd-sort, intrinsic comparison counts are unavailable. Runtime jobs
+will start only after compilation and correctness checks finish.
+
+The clean runtime binary is frozen with build ID certified-runtime-v1-vqsort
+and SHA256 bcb1a815919698e8b00b4028229a1ac6ccfc9f8ce25b097055fbce25d4d22daa.
+It passed the full selftest (VQSort included) and eleven harness tests. The
+Highway checkout is clean at the declared pin. Library SHA256 values are
+f7ae2963c37db01278345dcda663c47cd863d34c8153e07ec216ccd6fb4999af
+(hwy_contrib) and
+9183bbfcd15af05313948eec503fb253acd5e0c320dac1925af459813854f24b
+(hwy). This local build used tmp/upstream/highway and build/highway, with
+the same recipe documented under third_party/highway.
+
+A direct comparator-accounting trace confirms outpct1/n1m/seed312 chooses
+Powersort (choice10, 1,880,312 calls, 1,182 probes). The other three outpct1
+cases choose the certified quantile path (choice21). All four dup2 cases
+choose the general IPS4o fallback (choice20). Displacement16 goes through
+the inherited inversion gate (choice16); displacement64 uses fallback20.
+These are route observations, not new timing results.

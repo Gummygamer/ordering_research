@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -48,6 +49,18 @@ class RoundTimingTests(unittest.TestCase):
             row = next(csv.reader(io.StringIO(proc.stdout)))
             self.assertEqual(int(row[7]), 999)
             self.assertGreater(int(row[8]), 0)
+
+    def test_link_libraries_follow_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "sortlab"
+            with mock.patch.object(run_bench.subprocess, "run") as run:
+                run.return_value.returncode = 0
+                run_bench.build_sortlab(binary, "g++", ("-DNDEBUG",), "test",
+                                        ("libcontrib.a", "libcore.a"))
+            command = run.call_args.args[0]
+            self.assertGreater(command.index("libcontrib.a"),
+                               command.index(str(run_bench.SOURCE)))
+            self.assertGreater(command.index("libcore.a"), command.index("libcontrib.a"))
 
     def rounds(self, names="std_sort,powersort,hybrid_general_portfolio", n=1000, reps=6):
         proc = subprocess.run(

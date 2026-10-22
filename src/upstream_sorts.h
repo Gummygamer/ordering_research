@@ -17,3 +17,8 @@
 #define SORTLAB_HAVE_X86_SIMD 1
 #include "../third_party/x86-simd-sort/src/x86simdsort-static-incl.h"
 #endif
+
+// Optional separately built Highway library; see third_party/highway/README.md.
+#ifdef SORTLAB_HAVE_VQSORT
+#include <hwy/contrib/sort/vqsort.h>
+#endif

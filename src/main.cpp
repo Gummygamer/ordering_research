@@ -205,6 +205,9 @@ enum Algo {
 #ifdef SORTLAB_HAVE_X86_SIMD
     A_X86_SIMD,
 #endif
+#ifdef SORTLAB_HAVE_VQSORT
+    A_VQSORT,
+#endif
     A_RADIX,
 };
 struct AlgoInfo {
@@ -275,6 +278,9 @@ static const AlgoInfo ALGOS[] = {
 #endif
 #ifdef SORTLAB_HAVE_X86_SIMD
     {"x86_simd", A_X86_SIMD, false, true, true},
+#endif
+#ifdef SORTLAB_HAVE_VQSORT
+    {"vqsort", A_VQSORT, false, true, true},
 #endif
     {"radix_lsd",   A_RADIX,      false, false},
 };
@@ -352,6 +358,11 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
 #ifdef SORTLAB_HAVE_X86_SIMD
         case A_X86_SIMD:
             if (n > 1) x86simdsortStatic::qsort(a, n);
+            break;
+#endif
+#ifdef SORTLAB_HAVE_VQSORT
+        case A_VQSORT:
+            if (n > 1) hwy::VQSort(a, n, hwy::SortAscending{});
             break;
 #endif
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
