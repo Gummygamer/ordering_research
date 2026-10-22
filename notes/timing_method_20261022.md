@@ -75,3 +75,26 @@ python3 scripts/analyze_round_timing.py \
 
 The runner and analysis refuse to overwrite outputs. Use different output
 paths when reproducing these commands in the committed checkout.
+
+## Broader frozen-v16 validation on fresh seeds
+
+The same binary and unchanged selector ran all 27 existing heldout
+distributions at n=200k and 1m on fresh seeds 181--183. Seven algorithms and
+21 balanced rounds yield 23,814 validated timing rows and 162 matched cases.
+Median regret is +1.22%, mean +1.77%, nearest-rank p95 +8.40%, and worst
++38.58%; 145/162 cases are within 5% and 42 are wins/ties. At 1m alone,
+median regret is +0.81% and the worst case is +12.41%. The full-grid worst
+is sorted/200k/183, where the fastest baseline is the descent portfolio.
+Fixed selector overhead on short, fast ordered cases remains worth addressing.
+This is evidence for a new experiment, not a basis for retuning v16.
+
+```sh
+taskset -c 2 python3 scripts/run_bench.py \
+  --profile general-portfolio-heldout-v3 --phase time --no-build \
+  --binary build/sortlab_round --build-id balanced-rounds-v1 \
+  --sizes 200k,1m --time-seeds 181,182,183 --time-reps 21 \
+  --timing-order round --output results/general_v16_balanced_heldout_20261022.csv
+python3 scripts/analyze_round_timing.py \
+  results/general_v16_balanced_heldout_20261022.csv \
+  --output results/general_v16_balanced_heldout_20261022.md
+```

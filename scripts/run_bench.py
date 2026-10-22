@@ -181,8 +181,22 @@ GENERAL_PORTFOLIO_CONTROLS = (
     "saw13", "organpipe", "disp4", "disp16", "disp64", "disp256",
     "dup2", "dup16", "dup256", "equal", "random",
 )
+GENERAL_PREFIX_ALGORITHMS = GENERAL_PORTFOLIO_ALGORITHMS + ("hybrid_general_prefix",)
 
 PROFILES = {
+    "general-prefix-train": Profile(
+        grids=(Grid(GENERAL_PREFIX_ALGORITHMS,
+                    ("sorted", "reversed", "equal", "organpipe", "tail10",
+                     "runs1024", "nearly1", "random", "outpct1", "dup16"),
+                    (200_000, 1_000_000), 16),),
+        count_seeds=(191,), time_seeds=(191,),
+    ),
+    "general-prefix-heldout": Profile(
+        grids=(Grid(GENERAL_PREFIX_ALGORITHMS,
+                    tuple(f"outpct{p}" for p in (1, 5, 7, 9, 11, 14, 18, 22, 26, 36)) +
+                    GENERAL_PORTFOLIO_CONTROLS, (200_000, 1_000_000), 24),),
+        count_seeds=(201, 202, 203), time_seeds=(201, 202, 203),
+    ),
     # SkeletonSort's randomized adaptive comparison sort (arXiv:2610.15828)
     # against the general-purpose and run-adaptive baselines.
     "skeletonsort": Profile(

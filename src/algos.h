@@ -1648,6 +1648,11 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
     g_gate_choice = 13;
 }
 
+// The quicksort definition follows the adaptive portfolios. Declare it here
+// so generic comparators from outside lab do not depend on ADL to find it.
+template <class T, class C>
+void bl_quick(T* a, size_t n, C cmp);
+
 // General-purpose portfolio: use sampled descents, positional shape, and
 // multi-distance inversions to route among established adaptive sorting
 // strategies. Comparisons aid diagnosis; the objective is measured latency.
@@ -1891,6 +1896,49 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         return;
     }
     run_quantile_route();
+}
+
+// Prefix-guided variant. A long monotone prefix plus consistent landmarks
+// admits Powersort before allocating the general selector's sample vectors.
+// This is only a routing hint: Powersort still verifies and sorts the input.
+// A failed preflight leaves the permutation untouched and adds at most
+// max(256,n/256)-1 + 32 comparator calls to the unchanged general portfolio.
+template <class T, class C>
+void hybrid_general_prefix(T* a, size_t n, C cmp) {
+    if (n < 131072) {
+        hybrid_general_portfolio(a, n, cmp);
+        return;
+    }
+    uint64_t preflight_comps = 0;
+    auto probe_cmp = [&](const T& x, const T& y) {
+        ++preflight_comps;
+        return cmp(x, y);
+    };
+    const bool descending = probe_cmp(a[1], a[0]);
+    const size_t target = std::max<size_t>(256, n / 256);
+    size_t run = 2;
+    while (run < target) {
+        const bool less = probe_cmp(a[run], a[run - 1]);
+        if (less != descending) break;
+        ++run;
+    }
+    bool consistent = run == target;
+    size_t previous = 0;
+    for (size_t bin = 1; consistent && bin <= 16; ++bin) {
+        const size_t pos = bin * (n - 1) / 16;
+        const bool coarse_less = probe_cmp(a[pos], a[previous]);
+        const bool local_less = probe_cmp(a[pos], a[pos - 1]);
+        consistent = coarse_less == descending && local_less == descending;
+        previous = pos;
+    }
+    if (consistent) {
+        g_gate_probe_comps = preflight_comps;
+        g_gate_choice = 19;
+        powersort(a, n, cmp);
+        return;
+    }
+    hybrid_general_portfolio(a, n, cmp);
+    g_gate_probe_comps += preflight_comps;
 }
 
 // ---------------------------------------------------------------------------

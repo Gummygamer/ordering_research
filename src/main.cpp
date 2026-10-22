@@ -186,7 +186,7 @@ enum Algo {
     A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
     A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
     A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO, A_HQUANTILE_BACKBONE,
-    A_HGENERAL_PORTFOLIO,
+    A_HGENERAL_PORTFOLIO, A_HGENERAL_PREFIX,
     A_RADIX,
 };
 struct AlgoInfo { const char* name; Algo id; bool stable; bool comparison; };
@@ -244,6 +244,7 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_descent_portfolio", A_HDESCENT_PORTFOLIO, false, true},
     {"hybrid_quantile_backbone", A_HQUANTILE_BACKBONE, false, true},
     {"hybrid_general_portfolio", A_HGENERAL_PORTFOLIO, false, true},
+    {"hybrid_general_prefix", A_HGENERAL_PREFIX, false, true},
     {"radix_lsd",   A_RADIX,      false, false},
 };
 static const AlgoInfo* find_algo(const std::string& name) {
@@ -309,6 +310,7 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
         case A_HDESCENT_PORTFOLIO: lab::hybrid_descent_portfolio(a, n, cmp); break;
         case A_HQUANTILE_BACKBONE: lab::hybrid_quantile_backbone(a, n, cmp); break;
         case A_HGENERAL_PORTFOLIO: lab::hybrid_general_portfolio(a, n, cmp); break;
+        case A_HGENERAL_PREFIX: lab::hybrid_general_prefix(a, n, cmp); break;
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
 }
@@ -815,6 +817,55 @@ static bool selftest() {
             }
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "general_route",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // A sampled prefix route is never a sortedness certificate. In particular,
+    // unseen disorder must still be sorted, and failed preflights must preserve
+    // the original selector's exact comparison decisions.
+    {
+        const char* cases[] = {"sorted", "reversed", "equal", "organpipe",
+            "nearly1", "runs1024", "random", "tail10", "blindspot", "dup16"};
+        constexpr size_t n = 200000;
+        size_t checks = 0, fails = 0;
+        for (const char* dist : cases) {
+            const bool blindspot = std::string(dist) == "blindspot";
+            std::vector<u64> input = gen_dist(blindspot ? "sorted" : dist, n, 191);
+            if (blindspot) std::swap(input[n / 3 + 7], input[n / 3 + 8]);
+            std::vector<u64> result = input;
+            std::vector<u64> reference = input;
+            std::sort(reference.begin(), reference.end());
+            lab::g_comps = 0;
+            lab::hybrid_general_prefix(result.data(), n, lab::Counting<lab::RawLess>{});
+            const u64 total = lab::g_comps;
+            const u64 probes = lab::g_gate_probe_comps;
+            const int choice = lab::g_gate_choice;
+            std::vector<u64> branch = input;
+            lab::g_comps = 0;
+            lab::g_gate_probe_comps = 0;
+            if (choice == 19)
+                lab::powersort(branch.data(), n, lab::Counting<lab::RawLess>{});
+            else
+                lab::hybrid_general_portfolio(branch.data(), n,
+                                             lab::Counting<lab::RawLess>{});
+            const u64 branch_probes = lab::g_gate_probe_comps;
+            const bool ordered_control = blindspot || std::string(dist) == "sorted" ||
+                std::string(dist) == "reversed" || std::string(dist) == "equal";
+            ++checks;
+            if (result != reference || result != branch || probes < branch_probes ||
+                total != lab::g_comps + probes - branch_probes ||
+                probes - branch_probes > std::max<size_t>(256, n / 256) - 1 + 32 ||
+                (ordered_control && choice != 19)) {
+                ++fails;
+                std::fprintf(stderr, "  FAIL general_prefix d=%s choice=%d\n", dist, choice);
+            }
+        }
+        auto greater = [](u64 a, u64 b) { return a > b; };
+        std::vector<u64> reverse_order = gen_dist("sorted", n, 191);
+        lab::hybrid_general_prefix(reverse_order.data(), n, greater);
+        ++checks;
+        if (!std::is_sorted(reverse_order.begin(), reverse_order.end(), greater)) ++fails;
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "general_pre",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }
