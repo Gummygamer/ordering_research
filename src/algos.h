@@ -16,6 +16,7 @@
 #include <type_traits>
 #include <vector>
 #include <boost/multiprecision/cpp_int.hpp>
+#include "upstream_sorts.h"
 
 namespace lab {
 

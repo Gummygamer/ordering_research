@@ -1,0 +1,32 @@
+{
+  "repository": "https://github.com/ips4o/ips4o",
+  "revision": "08a5b926ee65cef19139057c6bde02bb5542c1cb",
+  "retrieved": "2026-10-22",
+  "modified": false,
+  "sha256": {
+    "LICENSE": "73a3c59a0d8d2343a27465fc6960df02980c8dd8c0299eecc013e6881198118c",
+    "include/ips4o/base_case.hpp": "729090d743571dc4c30d32adb9a2247a68e9275ffce43dc334b7071b315cd82b",
+    "include/ips4o/block_permutation.hpp": "c3ef7de50b04fc607895889b42ec7ccb02b9dead34ee88706ded7b63c1c2ca2c",
+    "include/ips4o/bucket_pointers.hpp": "82a2149d78e767dfe591ad2b60955359fc71524977bf8826a68d679983a121d1",
+    "include/ips4o/buffers.hpp": "8362e7dee831f86d3d042c6a621ca96d8d8f269ba507cb2fc478a43a3c9a18c0",
+    "include/ips4o/classifier.hpp": "d23d94115d0a0b416be35c1cab7b9f87acd75eb76868dd4c36d4b4bde4959bff",
+    "include/ips4o/cleanup_margins.hpp": "e9c44a96f8a4f6cb5d21cf2102d778c3409f001bbff4c1e8603cfaa33e72daee",
+    "include/ips4o/config.hpp": "be0174b45b20f50887c6ebb6d1c683a54c857ab883ff43228e41c4a4e1a02f67",
+    "include/ips4o/empty_block_movement.hpp": "7718aa70ccccbb0cef07aa400e31df8705209558618bc779bdef2eaf94cc73dc",
+    "include/ips4o/ips4o.hpp": "0276307ce19fbea1c4af22bd47a4c044f56f70ff1d13e82ac444306a8ce9b757",
+    "include/ips4o/ips4o_fwd.hpp": "cd4f438630fb13b9978175038abf4d9c7feba7994e9055ebee157669b69f8470",
+    "include/ips4o/local_classification.hpp": "fc9cdf624808fa4f17afa67eb1a0113c31dedecded17a0c37a74907f665c78a6",
+    "include/ips4o/memory.hpp": "b5c9939a60208a07b43000110dddbc206f1b88098dc97c43246778cae0e00395",
+    "include/ips4o/parallel.hpp": "f053b1e4d27bcd2a1336ddaf96b52df720d55bba2c6a8dd21f8c8040884dab69",
+    "include/ips4o/partitioning.hpp": "20da3629b00be235f7c575f780b86c548af6bf08750cb592aa36571749b3554e",
+    "include/ips4o/sampling.hpp": "23a2875344437dd62139c42280fc190a811da51a0d2233a48d4c3d4dd06d2b0b",
+    "include/ips4o/scheduler.hpp": "b1bf12d0d3bfacb46fffd417f90156cfa06380778fc8206640b5cc19994d1f84",
+    "include/ips4o/sequential.hpp": "c5acc5e68d544e69bbfff94c2d09adc5de5192474cab232a47247eaa45e82fac",
+    "include/ips4o/synchronization.hpp": "1cc35b9ee1f4751eaa44898ffbfde619e88c10c3646f18dcbb95303f2156088c",
+    "include/ips4o/task.hpp": "03db89685f84e8492f388f7dcd9e6f5808331378aa795508fa55ffcb0fd6a4d2",
+    "include/ips4o/thread_affinity.hpp": "23c8a506357821a39c6586454c778939b5c90db90d2a8fb1fd73a91956ad392c",
+    "include/ips4o/thread_pool.hpp": "f4ff4aee790eef75a33cbd12a9577fc5a59510929bd7ba24d7122d5c6eda366c",
+    "include/ips4o/utils.hpp": "dddd844eafef26d5a554c54a886f0806aec1f8b462fa1e7bffb15805203c317c",
+    "include/ips4o.hpp": "fab2b0f5ceebe59abfee191af02acf8457c508d85c99b15f3c80b507f27efa6f"
+  }
+}

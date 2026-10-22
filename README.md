@@ -51,6 +51,13 @@ versions and their source checkpoints are documented in
 used. The paper generator builds the [updated report](output/pdf/sorting_as_agent_research_v13.pdf)
 from the committed CSVs.
 
+The active SOTA search now includes pinned upstream pdqsort, sequential IPS4o,
+and native x86-simd-sort references. The first expanded audit shows that the
+old v16 fallback is not SOTA: at 1m full-width random uint64 keys it measures
+about 24 ns/key, versus 19 for IPS4o and 5.6 for the specialized SIMD reference.
+See `notes/sota_search_20261022.md` and `third_party/README.md` for scope,
+versions, licenses, instrumentation limits, and the development protocol.
+
 ## Build and run
 
 ```sh
@@ -133,6 +140,9 @@ Supported distributions are `random`, `dup2`, `dup16`, `dup256`, `equal`,
 `organpipe`, and `dispX`. A `dispX` input orders ranks by rank plus Gaussian
 noise of standard deviation `X`, providing a simple positional-prediction error
 model.
+`uniform64` uses full-width PRNG keys; `uniform32` uses low-32-bit entropy,
+and `highbits32` puts that entropy in the upper half of uint64 storage.
+The original `random` rank permutation is unchanged.
 
 ## Output and metrics
 
@@ -193,8 +203,9 @@ formats.
 
 ## Algorithms
 
-The registry includes 54 comparison algorithms plus one radix reference:
+The registry includes generic comparison algorithms and numeric SIMD/radix references:
 standard-library baselines (`std_sort`, `std_stable`),
+upstream pdqsort and sequential IPS4o, a native numeric x86-simd-sort reference,
 heapsort, three quicksort variants (`quick_mo3`, `dual_pivot`, `bl_quick`), a
 top-down mergesort, Timsort, Powersort, binary-insertion and Ford--Johnson
 hybrids, and an LSD radix-sort speed reference.

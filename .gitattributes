@@ -1,1 +1,3 @@
 *.pdf binary
+# Keep licensed upstream snapshots byte-identical, including their whitespace.
+third_party/** -whitespace

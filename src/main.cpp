@@ -82,6 +82,12 @@ static std::vector<u64> gen_dist(const std::string& d, size_t n, u64 seed) {
     if (d == "random") {                       // random permutation of 0..n-1
         for (size_t i = 0; i < n; ++i) v[i] = i;
         std::shuffle(v.begin(), v.end(), rng);
+    } else if (d == "uniform64") {
+        for (size_t i = 0; i < n; ++i) v[i] = rng();
+    } else if (d == "uniform32") {
+        for (size_t i = 0; i < n; ++i) v[i] = rng() & 0xFFFFFFFFULL;
+    } else if (d == "highbits32") {
+        for (size_t i = 0; i < n; ++i) v[i] = (rng() & 0xFFFFFFFFULL) << 32;
     } else if (d.rfind("dup", 0) == 0) {   // K distinct values via rng() % K
         // For dyadic K this is bit-identical to the former rng() & (K-1)
         // masks, so committed dup2/dup16/dup256 rows reproduce exactly; the
@@ -186,10 +192,19 @@ enum Algo {
     A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
     A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
     A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO, A_HQUANTILE_BACKBONE,
-    A_HGENERAL_PORTFOLIO, A_HGENERAL_PREFIX,
+    A_HGENERAL_PORTFOLIO, A_HGENERAL_PREFIX, A_PDQ, A_PDQ_BL,
+#ifdef SORTLAB_HAVE_IPS4O
+    A_IPS4O,
+#endif
+#ifdef SORTLAB_HAVE_X86_SIMD
+    A_X86_SIMD,
+#endif
     A_RADIX,
 };
-struct AlgoInfo { const char* name; Algo id; bool stable; bool comparison; };
+struct AlgoInfo {
+    const char* name; Algo id; bool stable; bool comparison;
+    bool native_numeric = false; // intrinsic comparisons bypass Counting<C>
+};
 static const AlgoInfo ALGOS[] = {
     {"std_sort",    A_STD_SORT,   false, true},
     {"std_stable",  A_STD_STABLE, true,  true},
@@ -245,6 +260,14 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_quantile_backbone", A_HQUANTILE_BACKBONE, false, true},
     {"hybrid_general_portfolio", A_HGENERAL_PORTFOLIO, false, true},
     {"hybrid_general_prefix", A_HGENERAL_PREFIX, false, true},
+    {"pdqsort_branchy", A_PDQ, false, true},
+    {"pdqsort_branchless", A_PDQ_BL, false, true},
+#ifdef SORTLAB_HAVE_IPS4O
+    {"ips4o", A_IPS4O, false, true},
+#endif
+#ifdef SORTLAB_HAVE_X86_SIMD
+    {"x86_simd", A_X86_SIMD, false, true, true},
+#endif
     {"radix_lsd",   A_RADIX,      false, false},
 };
 static const AlgoInfo* find_algo(const std::string& name) {
@@ -311,6 +334,16 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
         case A_HQUANTILE_BACKBONE: lab::hybrid_quantile_backbone(a, n, cmp); break;
         case A_HGENERAL_PORTFOLIO: lab::hybrid_general_portfolio(a, n, cmp); break;
         case A_HGENERAL_PREFIX: lab::hybrid_general_prefix(a, n, cmp); break;
+        case A_PDQ: if (n > 1) ::pdqsort(a, a + n, cmp); break;
+        case A_PDQ_BL: if (n > 1) ::pdqsort_branchless(a, a + n, cmp); break;
+#ifdef SORTLAB_HAVE_IPS4O
+        case A_IPS4O: if (n > 1) ips4o::sort(a, a + n, cmp); break;
+#endif
+#ifdef SORTLAB_HAVE_X86_SIMD
+        case A_X86_SIMD:
+            if (n > 1) x86simdsortStatic::qsort(a, n);
+            break;
+#endif
         case A_RADIX:      lab::radix_sort_u64(a, n); break;
     }
 }
@@ -319,7 +352,8 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
 // selftest
 // ---------------------------------------------------------------------------
 static bool selftest() {
-    const char* dists[] = {"random", "dup2", "dup6", "dup16", "equal",
+    const char* dists[] = {"random", "uniform64", "uniform32", "highbits32",
+                           "dup2", "dup6", "dup16", "equal",
                            "sorted", "reversed", "runs32", "nearly1", "saw13",
                            "organpipe", "disp16", "tail10", "outliers1",
                            "outliers8", "outliers64"};
@@ -1123,6 +1157,10 @@ static bool bench(const std::string& algo, const std::string& dist, size_t n,
                         lab::g_fj_run_thresh, lab::FJ_MAX, SORTLAB_BUILD_ID);
         }
     } else if (mode == "count") {
+        if (ai->native_numeric)
+            std::fprintf(stderr, "%s: native SIMD comparisons are uninstrumented; "
+                         "comparisons=0 records no Counting<C> calls, not zero logical comparisons\n",
+                         ai->name);
         std::memcpy(work.data(), master.data(), n * sizeof(u64));
         lab::g_comps = 0;
         lab::g_merge_cost = 0;
@@ -1175,7 +1213,7 @@ int main(int argc, char** argv) {
     if (cmd == "list") {
         for (auto& ai : ALGOS)
             std::printf("%s,%s,%s\n", ai.name, ai.stable ? "stable" : "unstable",
-                        ai.comparison ? "comparison" : "radix");
+                        ai.native_numeric ? "simd" : ai.comparison ? "comparison" : "radix");
         return 0;
     }
     if (cmd == "bench" && argc >= 8 && argc <= 10) {

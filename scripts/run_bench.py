@@ -63,6 +63,9 @@ INTEGER_FIELDS = (
 
 KNOWN_DISTS = {
     "random",
+    "uniform64",
+    "uniform32",
+    "highbits32",
     "equal",
     "sorted",
     "reversed",
@@ -182,8 +185,22 @@ GENERAL_PORTFOLIO_CONTROLS = (
     "dup2", "dup16", "dup256", "equal", "random",
 )
 GENERAL_PREFIX_ALGORITHMS = GENERAL_PORTFOLIO_ALGORITHMS + ("hybrid_general_prefix",)
+SOTA_BASELINE_ALGORITHMS = (
+    "std_sort", "powersort", "bl_quick", "hybrid_quantile_backbone",
+    "hybrid_general_portfolio", "pdqsort_branchy", "pdqsort_branchless",
+    "ips4o", "x86_simd", "radix_lsd",
+)
+SOTA_BASELINE_DISTRIBUTIONS = (
+    "random", "uniform64", "uniform32", "highbits32", "sorted", "reversed",
+    "equal", "nearly1", "runs1024", "dup16", "outpct1", "disp16",
+)
 
 PROFILES = {
+    "sota-baseline-audit": Profile(
+        grids=(Grid(SOTA_BASELINE_ALGORITHMS, SOTA_BASELINE_DISTRIBUTIONS,
+                    (200_000, 1_000_000), 20),),
+        count_seeds=(301, 302), time_seeds=(301, 302),
+    ),
     "general-prefix-train": Profile(
         grids=(Grid(GENERAL_PREFIX_ALGORITHMS,
                     ("sorted", "reversed", "equal", "organpipe", "tail10",
