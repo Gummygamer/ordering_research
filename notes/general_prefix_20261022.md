@@ -66,3 +66,29 @@ only the 32 landmark comparisons are incremental probe work. Test exact
 comparison identity against Powersort plus those 32 probes, including disorder
 outside the samples. Development still uses seed 191; any accepted v2 must be
 frozen before seeds 201--203. The v1 checkpoint remains available in Git.
+
+## v2 development result: rejected
+
+The strict build, full sorting suite, eleven prefix checks, and eight
+timing/analysis checks passed. All 2,720 development rows validated. The
+comparison-saving variant nevertheless has +2.05% median regret against the
+fastest of seven baselines, +7.71% mean, and +32.96% worst; 13/20 cases are
+within 5%. Relative to contemporaneous v16, sorted/200k is +29.95%,
+reversed/200k +28.48%, and equal/1m +25.40%. It fails development acceptance,
+so no heldout is run. Assembly inspection shows different generated scan
+loops, but without hardware counters it does not establish the cause of
+the slowdown. Removing allocations and duplicate comparisons was insufficient
+to predict elapsed time. The v2 checkpoint and raw development data are kept.
+
+## v3 hypothesis, before its development run
+
+Keep the same routing preflight and use the existing `count_run` implementation
+for admitted inputs instead of the custom continuation scan. This repeats
+the short prefix, adding at most max(256,floor(n/256))-1+32 comparisons to
+Powersort, but reuses the existing scan primitive and still avoids a second
+full first-run scan inside Powersort. Entire monotone arrays return after
+`count_run`; partial runs are consumed by `powersort_from_first_run`.
+This is a latency hypothesis about reusing an existing implementation, not
+a prediction that a higher comparison count must be faster. The same seed-191
+development acceptance rule and untouched seeds 201--203 apply. If it also
+fails, retain the negative result and the existing v16 recommendation.

@@ -521,14 +521,16 @@ void timsort(T* a, size_t n, C cmp) {
 // BaseSorter: void(T* seg, size_t sorted_prefix, size_t m, C cmp)
 template <class T, class C, class NextMinrun, class BaseSorter>
 void powersort_impl_next(T* a, size_t n, C cmp, NextMinrun next_minrun,
-                         BaseSorter base, size_t small_merge = 0) {
+                         BaseSorter base, size_t small_merge = 0,
+                         size_t first_run = 0) {
     if (n < 2) return;
+    assert(first_run <= n);
     MergeState<T, C> ms(a, n, cmp);
     ms.small_merge = small_merge;
     auto& p = ms.pending;
 
     auto next_run = [&](size_t lo, bool& forced) -> size_t {
-        size_t run = count_run(a, lo, n, cmp);
+        size_t run = lo == 0 && first_run != 0 ? first_run : count_run(a, lo, n, cmp);
         size_t minrun = next_minrun();
         forced = false;
         if (run < minrun) {
@@ -574,6 +576,19 @@ void powersort(T* a, size_t n, C cmp) {
                         [](T* seg, size_t pre, size_t m, C c) {
                             binary_insert_extend(seg, pre, m, c);
                         });
+}
+
+// The caller supplies a verified ascending first run (reversing a strict
+// descending run beforehand). Consume the usual first minrun target, while
+// reusing the ordering work rather than scanning that run a second time.
+template <class T, class C>
+void powersort_from_first_run(T* a, size_t n, size_t first_run, C cmp) {
+    assert(first_run > 0 && first_run <= n);
+    MinRunGenerator minruns(n);
+    powersort_impl_next(a, n, cmp, [&minruns]() { return minruns.next(); },
+                        [](T* seg, size_t pre, size_t m, C c) {
+                            binary_insert_extend(seg, pre, m, c);
+                        }, 0, first_run);
 }
 
 // Fixed-minrun ablation matching the older CPython powersort run targeting.
@@ -1899,10 +1914,12 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
 }
 
 // Prefix-guided variant. A long monotone prefix plus consistent landmarks
-// admits Powersort before allocating the general selector's sample vectors.
-// This is only a routing hint: Powersort still verifies and sorts the input.
-// A failed preflight leaves the permutation untouched and adds at most
+// admits a full first-run scan. Entire monotone inputs finish immediately;
+// otherwise Powersort consumes the verified first run without rescanning it.
+// Failed preflights leave the permutation untouched and add at most
 // max(256,n/256)-1 + 32 comparator calls to the unchanged general portfolio.
+// On admission, first-run detection replaces useful Powersort work, leaving
+// only the 32 landmark comparisons as incremental probe work.
 template <class T, class C>
 void hybrid_general_prefix(T* a, size_t n, C cmp) {
     if (n < 131072) {
@@ -1917,13 +1934,13 @@ void hybrid_general_prefix(T* a, size_t n, C cmp) {
     const bool descending = probe_cmp(a[1], a[0]);
     const size_t target = std::max<size_t>(256, n / 256);
     size_t run = 2;
-    while (run < target) {
-        const bool less = probe_cmp(a[run], a[run - 1]);
-        if (less != descending) break;
-        ++run;
-    }
+    if (descending)
+        while (run < target && probe_cmp(a[run], a[run - 1])) ++run;
+    else
+        while (run < target && !probe_cmp(a[run], a[run - 1])) ++run;
     bool consistent = run == target;
     size_t previous = 0;
+    const uint64_t before_landmarks = preflight_comps;
     for (size_t bin = 1; consistent && bin <= 16; ++bin) {
         const size_t pos = bin * (n - 1) / 16;
         const bool coarse_less = probe_cmp(a[pos], a[previous]);
@@ -1932,9 +1949,16 @@ void hybrid_general_prefix(T* a, size_t n, C cmp) {
         previous = pos;
     }
     if (consistent) {
-        g_gate_probe_comps = preflight_comps;
+        const uint64_t landmark_comps = preflight_comps - before_landmarks;
+        if (descending) {
+            while (run < n && probe_cmp(a[run], a[run - 1])) ++run;
+            std::reverse(a, a + run);
+        } else {
+            while (run < n && !probe_cmp(a[run], a[run - 1])) ++run;
+        }
+        g_gate_probe_comps = landmark_comps;
         g_gate_choice = 19;
-        powersort(a, n, cmp);
+        if (run < n) powersort_from_first_run(a, n, run, cmp);
         return;
     }
     hybrid_general_portfolio(a, n, cmp);
