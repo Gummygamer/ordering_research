@@ -192,7 +192,8 @@ enum Algo {
     A_WINDOW_HEAP, A_DELETION_BACKBONE, A_DELETION_BACKBONE_ROUTE,
     A_DELETION_BACKBONE_PRESERVE, A_DELETION_BACKBONE_ROTATE,
     A_HBACKBONE_GATE, A_HDESCENT_PORTFOLIO, A_HQUANTILE_BACKBONE,
-    A_HGENERAL_PORTFOLIO, A_HGENERAL_PREFIX, A_PDQ, A_PDQ_BL,
+    A_HGENERAL_PORTFOLIO, A_HGENERAL_PREFIX, A_HQUANTILE_CONCAT,
+    A_HCERTIFIED_PORTFOLIO, A_PDQ, A_PDQ_BL,
 #ifdef SORTLAB_HAVE_IPS4O
     A_IPS4O,
 #endif
@@ -260,6 +261,8 @@ static const AlgoInfo ALGOS[] = {
     {"hybrid_quantile_backbone", A_HQUANTILE_BACKBONE, false, true},
     {"hybrid_general_portfolio", A_HGENERAL_PORTFOLIO, false, true},
     {"hybrid_general_prefix", A_HGENERAL_PREFIX, false, true},
+    {"hybrid_quantile_concat", A_HQUANTILE_CONCAT, false, true},
+    {"hybrid_certified_portfolio", A_HCERTIFIED_PORTFOLIO, false, true},
     {"pdqsort_branchy", A_PDQ, false, true},
     {"pdqsort_branchless", A_PDQ_BL, false, true},
 #ifdef SORTLAB_HAVE_IPS4O
@@ -334,6 +337,8 @@ static void run_algo(Algo id, u64* a, size_t n, Cmp cmp,
         case A_HQUANTILE_BACKBONE: lab::hybrid_quantile_backbone(a, n, cmp); break;
         case A_HGENERAL_PORTFOLIO: lab::hybrid_general_portfolio(a, n, cmp); break;
         case A_HGENERAL_PREFIX: lab::hybrid_general_prefix(a, n, cmp); break;
+        case A_HQUANTILE_CONCAT: lab::hybrid_quantile_concat(a, n, cmp); break;
+        case A_HCERTIFIED_PORTFOLIO: lab::hybrid_certified_portfolio(a, n, cmp); break;
         case A_PDQ: if (n > 1) ::pdqsort(a, a + n, cmp); break;
         case A_PDQ_BL: if (n > 1) ::pdqsort_branchless(a, a + n, cmp); break;
 #ifdef SORTLAB_HAVE_IPS4O
@@ -779,6 +784,84 @@ static bool selftest() {
             }
         }
         std::printf("%-12s %s (%zu checks, %zu fails)\n", "quantile_bb",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    // Concatenation must preserve the exact permutation and routing of the
+    // old repair. It removes comparisons only after a successful certificate;
+    // failed certificates and broad-disorder branches remain exact controls.
+    {
+        const char* cases[] = {"outpct1", "outpct5", "outpct14", "sorted", "random", "dup16"};
+        constexpr size_t n = 200000;
+        size_t checks = 0, fails = 0;
+        for (const char* dist : cases) {
+            const auto input = gen_dist(dist, n, 311);
+            auto old = input;
+            auto revised = input;
+            lab::g_comps = 0;
+            lab::hybrid_quantile_backbone(old.data(), n, lab::Counting<lab::RawLess>{});
+            const u64 old_total = lab::g_comps;
+            const u64 old_probes = lab::g_gate_probe_comps;
+            const int old_choice = lab::g_gate_choice;
+            lab::g_comps = 0;
+            lab::hybrid_quantile_concat(revised.data(), n, lab::Counting<lab::RawLess>{});
+            ++checks;
+            if (old != revised || !std::is_sorted(revised.begin(), revised.end()) ||
+                old_choice != lab::g_gate_choice || old_probes != lab::g_gate_probe_comps ||
+                (old_choice == 13 ? lab::g_comps >= old_total : lab::g_comps != old_total)) {
+                ++fails;
+                std::fprintf(stderr, "  FAIL quantile_concat d=%s\n", dist);
+            }
+        }
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "quantile_cat",
+                    fails ? "FAIL" : "ok", checks, fails);
+        if (fails) all_ok = false;
+    }
+    {
+        const char* cases[] = {"outpct1", "outpct5", "outpct14", "outpct36",
+            "sorted", "reversed", "equal", "nearly1", "random", "uniform64",
+            "runs1024", "disp16", "dup16", "organpipe"};
+        constexpr size_t n = 200000;
+        size_t checks = 0, fails = 0;
+        for (const char* dist : cases) {
+            auto input = gen_dist(dist, n, 311);
+            auto expected = input;
+            std::sort(expected.begin(), expected.end());
+            lab::g_comps = 0;
+            lab::hybrid_certified_portfolio(input.data(), n, lab::Counting<lab::RawLess>{});
+            ++checks;
+            if (input != expected || lab::g_gate_probe_comps > lab::g_comps) ++fails;
+        }
+        auto greater = [](u64 a, u64 b) { return a > b; };
+        auto input = gen_dist("uniform64", n, 311);
+        lab::hybrid_certified_portfolio(input.data(), n, greater);
+        ++checks;
+        if (!std::is_sorted(input.begin(), input.end(), greater)) ++fails;
+        for (size_t count : {size_t{129}, size_t{131073}}) {
+            std::vector<std::string> words;
+            words.reserve(count);
+            for (size_t i = 0; i < count; ++i)
+                words.push_back("shared-prefix/" + std::to_string((i * 137) % 1009));
+            auto expected = words;
+            std::sort(expected.begin(), expected.end());
+            auto less = [](const std::string& a, const std::string& b) { return a < b; };
+            lab::hybrid_certified_portfolio(words.data(), words.size(), less);
+            ++checks;
+            if (words != expected) ++fails;
+        }
+        struct Record { u64 key; u64 payload; };
+        std::vector<Record> records(n);
+        for (size_t i = 0; i < n; ++i) records[i] = {i % 31, i};
+        auto by_key = [](const Record& a, const Record& b) { return a.key < b.key; };
+        lab::hybrid_certified_portfolio(records.data(), n, by_key);
+        bool record_ok = std::is_sorted(records.begin(), records.end(), by_key);
+        std::sort(records.begin(), records.end(),
+                  [](const Record& a, const Record& b) { return a.payload < b.payload; });
+        for (size_t i = 0; i < n; ++i)
+            record_ok &= records[i].payload == i && records[i].key == i % 31;
+        ++checks;
+        if (!record_ok) ++fails;
+        std::printf("%-12s %s (%zu checks, %zu fails)\n", "cert_port",
                     fails ? "FAIL" : "ok", checks, fails);
         if (fails) all_ok = false;
     }

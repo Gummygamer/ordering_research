@@ -1527,6 +1527,21 @@ void hybrid_descent_portfolio(T* a, size_t n, C cmp) {
     }
 }
 
+// A stronger generic fallback, kept separate from legacy branches so their
+// decisions and comparator accounting remain available as experiment controls.
+template <class T, class C>
+void strong_comparison_sort(T* a, size_t n, C cmp) {
+    if (n < 2) return;
+#ifdef SORTLAB_HAVE_IPS4O
+    if (n >= 131072) {
+        ips4o::sort(a, a + n, cmp);
+        return;
+    }
+#endif
+    if constexpr (std::is_arithmetic_v<T>) ::pdqsort_branchless(a, a + n, cmp);
+    else ::pdqsort(a, a + n, cmp);
+}
+
 // Quantile-peeling sort for inputs whose disorder consists of scattered
 // high keys above an ordered backbone. A descent sample estimates p via
 // d=p-p^2/2; a conservative sample quantile supplies a pivot. The scan peels
@@ -1534,8 +1549,10 @@ void hybrid_descent_portfolio(T* a, size_t n, C cmp) {
 // On a successful certificate, sort the peeled values and merge them back
 // into the backbone. A failed certificate restores the same permutation and
 // lets Powersort handle the resulting ordered-prefix/unordered-suffix layout.
-template <class T, class C>
-void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
+// Policy 0 preserves the legacy merge; 1 isolates concatenation; 2 also uses
+// the stronger broad-disorder fallback and PDQ for the extracted high keys.
+template <int Policy, class T, class C>
+void quantile_backbone_impl(T* a, size_t n, C cmp) {
     constexpr size_t MIN_N = 131072;
     constexpr size_t BINS = 16;
     constexpr size_t PER_BIN = 64;
@@ -1544,7 +1561,8 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
     g_gate_probe_comps = 0;
     if (n < MIN_N) {
         g_gate_choice = 0;
-        std::sort(a, a + n, cmp);
+        if constexpr (Policy == 2) strong_comparison_sort(a, n, cmp);
+        else std::sort(a, a + n, cmp);
         return;
     }
 
@@ -1603,7 +1621,8 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
         0.0, 1.0 - 2.0 * std::min(0.5, descent_rate + margin)));
     if (p_upper >= 0.5) {
         g_gate_choice = 12;
-        std::sort(a, a + n, cmp);
+        if constexpr (Policy == 2) strong_comparison_sort(a, n, cmp);
+        else std::sort(a, a + n, cmp);
         return;
     }
 
@@ -1650,7 +1669,18 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
         return;
     }
 
-    std::sort(high.begin(), high.end(), cmp);
+    if constexpr (Policy == 2 && std::is_arithmetic_v<T>)
+        ::pdqsort_branchless(high.begin(), high.end(), cmp);
+    else if constexpr (Policy == 2) ::pdqsort(high.begin(), high.end(), cmp);
+    else std::sort(high.begin(), high.end(), cmp);
+    if constexpr (Policy != 0) {
+        // Partition invariant: every retained key is < pivot, and every
+        // extracted key is >= pivot under the strict weak order. A verified
+        // sorted low partition and a sorted high partition need no merge.
+        std::memcpy(a + backbone, high.data(), high.size() * sizeof(T));
+        g_gate_choice = 13;
+        return;
+    }
     size_t left = backbone;
     size_t right = high.size();
     size_t out = n;
@@ -1664,6 +1694,17 @@ void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
     g_gate_choice = 13;
 }
 
+template <class T, class C>
+void hybrid_quantile_backbone(T* a, size_t n, C cmp) {
+    quantile_backbone_impl<0>(a, n, cmp);
+}
+
+template <class T, class C>
+void hybrid_quantile_concat(T* a, size_t n, C cmp) {
+    static_assert(std::is_trivially_copyable_v<T>);
+    quantile_backbone_impl<1>(a, n, cmp);
+}
+
 // The quicksort definition follows the adaptive portfolios. Declare it here
 // so generic comparators from outside lab do not depend on ADL to find it.
 template <class T, class C>
@@ -1672,14 +1713,15 @@ void bl_quick(T* a, size_t n, C cmp);
 // General-purpose portfolio: use sampled descents, positional shape, and
 // multi-distance inversions to route among established adaptive sorting
 // strategies. Comparisons aid diagnosis; the objective is measured latency.
-template <class T, class C>
-void hybrid_general_portfolio(T* a, size_t n, C cmp) {
+template <bool ModernFallback, class T, class C>
+void general_portfolio_impl(T* a, size_t n, C cmp) {
     constexpr size_t MIN_N = 131072;
     constexpr size_t BINS = 16;
     g_gate_probe_comps = 0;
     if (n < MIN_N) {
         g_gate_choice = 0;
-        std::sort(a, a + n, cmp);
+        if constexpr (ModernFallback) strong_comparison_sort(a, n, cmp);
+        else std::sort(a, a + n, cmp);
         return;
     }
     const size_t per_bin = n < 500000 ? 24 : 32;
@@ -1847,14 +1889,16 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         powersort(a, n, cmp);
     };
     auto run_bl_quick = [&]() {
-        g_gate_choice = 12;
-        bl_quick(a, n, cmp);
+        g_gate_choice = ModernFallback ? 20 : 12;
+        if constexpr (ModernFallback) strong_comparison_sort(a, n, cmp);
+        else bl_quick(a, n, cmp);
     };
     auto run_quantile_route = [&]() {
         const uint64_t outer_probe = g_gate_probe_comps;
-        hybrid_quantile_backbone(a, n, cmp);
+        if constexpr (ModernFallback) quantile_backbone_impl<2>(a, n, cmp);
+        else hybrid_quantile_backbone(a, n, cmp);
         g_gate_probe_comps += outer_probe;
-        g_gate_choice = 17;
+        g_gate_choice = ModernFallback ? 21 : 17;
     };
     auto run_near_sorted_route = [&]() {
         if (sampled_large_gap && large_gap_inversions > 16) {
@@ -1912,6 +1956,24 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
         return;
     }
     run_quantile_route();
+}
+
+template <class T, class C>
+void hybrid_general_portfolio(T* a, size_t n, C cmp) {
+    general_portfolio_impl<false>(a, n, cmp);
+}
+
+template <class T, class C>
+void hybrid_certified_portfolio(T* a, size_t n, C cmp) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        general_portfolio_impl<true>(a, n, cmp);
+    } else {
+        // Bytewise compaction is only valid for trivial records. Other types
+        // still receive a fully generic move-aware upstream comparison sort.
+        g_gate_probe_comps = 0;
+        g_gate_choice = 20;
+        strong_comparison_sort(a, n, cmp);
+    }
 }
 
 // Prefix-guided variant. A long monotone prefix plus consistent landmarks

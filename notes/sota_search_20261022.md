@@ -75,3 +75,47 @@ All 10,080 rows validated: 480 count/resource rows and 9,600 uninstrumented timi
 Against the strongest generic comparator baseline per case, v16 has median regret +20.21%, with 15/48 cases within 5%. Against all references including SIMD/radix it has median regret +232.82%. These are local measurements on the audit grid, not a SOTA claim.
 
 Random and full-width disordered keys expose the weak old fallback. Nearly sorted data and sparse high-key corruption retain a structural advantage. The next candidate should pair the existing verified repair mechanism with stronger disordered fallbacks and test its additional work, then broaden the suite and competitors before making a SOTA claim.
+
+## Certified-partition screen, declared before its timings
+
+The old quantile routine retains only keys less than its pivot and extracts
+all keys at or above it. Under a strict weak order, every retained key is
+ordered before every extracted key. Once the retained sequence is certified
+nondecreasing, sort the extracted sequence and concatenate it. The previous
+backward merge is unnecessary. This observation is a correctness/work
+invariant, not evidence of novelty or a latency improvement by itself.
+
+`hybrid_quantile_concat` isolates that change: identical sampling, pivot,
+fallback, and high-key sorter, with bulk copy instead of the final merge.
+Test identical output and probes, identical comparison counts on fallback
+branches, and strictly fewer calls on successful extraction cases.
+
+`hybrid_certified_portfolio` retains the v16 structure routes and thresholds,
+replaces its disordered fallback with sequential IPS4o at n>=131072 and PDQ
+below that size, uses concatenation after successful certification, and uses
+PDQ for extracted keys. Arithmetic PDQ calls are explicitly branchless;
+non-arithmetic PDQ calls preserve its branchy generic interface. Nontrivial
+types bypass bytewise repair and use the move-aware generic fallback.
+Reverse comparators, strings at both sides of the cutoff, and records carrying
+payload identities are correctness requirements. This is an experimental
+composition of credited sorters; it is not claimed as a new SOTA algorithm.
+
+The `certified-screen-v1` development grid uses seeds 311--312, n=200k/1m,
+23 input distributions, twelve algorithms, and 24 position-balanced rounds.
+The eleven added controls cover four more outlier rates, two displacement
+scales, a random tail, shorter runs, two duplicate cardinalities, and organpipe.
+It has 1,104 resource/count rows plus 26,496 timing rows. The inherited gates
+were trained for weaker fallbacks, so their routing boundaries must be audited
+against the new timings rather than presumed optimal. Only development data
+may inform revisions; a future final grid must use untouched seeds and a
+broader declared suite.
+
+The screen binary is frozen while it runs. Its SHA256 is
+`3ea70de8aa9ea155a6d207510dd3e789b471e1033b8f6e1e33bc878cd45300e6`;
+the compiled `src/main.cpp` SHA256 is
+`013c58c95aa4707b0219c2380cc88d0a696783a37716ec1ac4e7247098dc7398`.
+The source freeze is committed separately from the allocator-mode harness
+change, which is not part of this screen. Like earlier measurements, this
+screen uses raw comparators but still has allocation-tracking overrides.
+It is development evidence; later runtime evaluations must use a normal
+allocator and collect resources in a separate tracked build.

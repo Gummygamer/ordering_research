@@ -194,8 +194,20 @@ SOTA_BASELINE_DISTRIBUTIONS = (
     "random", "uniform64", "uniform32", "highbits32", "sorted", "reversed",
     "equal", "nearly1", "runs1024", "dup16", "outpct1", "disp16",
 )
+CERTIFIED_SCREEN_ALGORITHMS = SOTA_BASELINE_ALGORITHMS + (
+    "hybrid_quantile_concat", "hybrid_certified_portfolio",
+)
+CERTIFIED_SCREEN_DISTRIBUTIONS = SOTA_BASELINE_DISTRIBUTIONS + (
+    "outpct5", "outpct14", "outpct26", "outpct36", "disp4", "disp64",
+    "tail10", "runs32", "dup2", "dup256", "organpipe",
+)
 
 PROFILES = {
+    "certified-screen-v1": Profile(
+        grids=(Grid(CERTIFIED_SCREEN_ALGORITHMS, CERTIFIED_SCREEN_DISTRIBUTIONS,
+                    (200_000, 1_000_000), 24),),
+        count_seeds=(311, 312), time_seeds=(311, 312),
+    ),
     "sota-baseline-audit": Profile(
         grids=(Grid(SOTA_BASELINE_ALGORITHMS, SOTA_BASELINE_DISTRIBUTIONS,
                     (200_000, 1_000_000), 20),),
