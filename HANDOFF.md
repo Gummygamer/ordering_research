@@ -1,11 +1,39 @@
 # HANDOFF — ordering-algorithms research
 
-Updated 2026-10-14 after the SkeletonSort adaptive sorting study. The earlier
+Updated 2026-10-22 after the timing-method audit and prefix experiments. The earlier
 duplicate-cardinality response (`498b627`) and pre-registered K=112 veto
 replacement (`97869f3`) remain part of the history. The filesystem and Git
 history remain authoritative; check both before acting.
 
-## Current state
+## Current runtime-portfolio state
+
+- Work directly in the current chat and selected model. The user's new
+  AGENTS instructions disable routine Jev routing and delegation.
+- `hybrid_general_portfolio` remains the general v16 candidate. The old
+  +79.65% saw13 and +57.33% disp16 cases did not recur at those magnitudes
+  under genuinely alternating rounds. This does not isolate the cause.
+- `bench-round` and default driver `--timing-order round` use shuffled cyclic
+  schedules; each complete K-round cycle balances all K execution positions.
+  Legacy grouped mode remains explicit. Earlier "interleaved" studies batched
+  each algorithm's repetitions and alternated algorithms only by input.
+- Frozen v16 fresh seeds 181--183: 27 distributions, n=200k/1m, seven
+  algorithms, 21 rounds; 23,814 output-validated time rows. Median regret
+  +1.22%, p95 +8.40%, worst +38.58%; 145/162 cases within 5%.
+- `hybrid_general_prefix` is an experimental v3 candidate, not promoted.
+  v1 and v2 failed development; v3 improves some ordered cases but remains
+  mixed, with +1.80% median regret and +20.13% worst on the twenty-case
+  seed-191 development grid. Seeds 201--203 remain untouched.
+- The reusable `powersort_from_first_run` consumes an already verified and
+  normalized first run. A missing `bl_quick` forward declaration was fixed
+  so the portfolios compile with external comparator types.
+- Strict warnings build, full sorting suite, eleven new prefix correctness/
+  accounting checks (including unsampled disorder and reverse comparator),
+  and eight timing/analysis tests passed. Preserve count-mode timing exclusion.
+- See `notes/timing_method_20261022.md`, `notes/general_prefix_20261022.md`,
+  the matching dated CSV/Markdown results, and the v13 paper generator.
+  Substantial changes have been committed and pushed; verify latest Git state.
+
+## Historical state
 
 The `97869f3` milestone added a `hybrid_gate` cardinality veto. The current
 checkout also includes the 2026-09-30 learned Shellsort sequence study

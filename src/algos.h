@@ -1914,12 +1914,12 @@ void hybrid_general_portfolio(T* a, size_t n, C cmp) {
 }
 
 // Prefix-guided variant. A long monotone prefix plus consistent landmarks
-// admits a full first-run scan. Entire monotone inputs finish immediately;
-// otherwise Powersort consumes the verified first run without rescanning it.
-// Failed preflights leave the permutation untouched and add at most
-// max(256,n/256)-1 + 32 comparator calls to the unchanged general portfolio.
-// On admission, first-run detection replaces useful Powersort work, leaving
-// only the 32 landmark comparisons as incremental probe work.
+// admits the existing first-run detector. Entire monotone inputs finish there;
+// otherwise Powersort consumes its verified first run without rescanning it.
+// The preflight adds at most max(256,n/256)-1 + 32 comparator calls to either
+// Powersort or the unchanged general portfolio. Rejected preflights do not
+// mutate the permutation; admitted strict-descending runs are normalized by
+// count_run before Powersort consumes them.
 template <class T, class C>
 void hybrid_general_prefix(T* a, size_t n, C cmp) {
     if (n < 131072) {
@@ -1940,7 +1940,6 @@ void hybrid_general_prefix(T* a, size_t n, C cmp) {
         while (run < target && !probe_cmp(a[run], a[run - 1])) ++run;
     bool consistent = run == target;
     size_t previous = 0;
-    const uint64_t before_landmarks = preflight_comps;
     for (size_t bin = 1; consistent && bin <= 16; ++bin) {
         const size_t pos = bin * (n - 1) / 16;
         const bool coarse_less = probe_cmp(a[pos], a[previous]);
@@ -1949,15 +1948,9 @@ void hybrid_general_prefix(T* a, size_t n, C cmp) {
         previous = pos;
     }
     if (consistent) {
-        const uint64_t landmark_comps = preflight_comps - before_landmarks;
-        if (descending) {
-            while (run < n && probe_cmp(a[run], a[run - 1])) ++run;
-            std::reverse(a, a + run);
-        } else {
-            while (run < n && !probe_cmp(a[run], a[run - 1])) ++run;
-        }
-        g_gate_probe_comps = landmark_comps;
+        g_gate_probe_comps = preflight_comps;
         g_gate_choice = 19;
+        run = count_run(a, 0, n, cmp);
         if (run < n) powersort_from_first_run(a, n, run, cmp);
         return;
     }

@@ -1243,7 +1243,7 @@ def run_timing_phase(
     for done, case in enumerate(ordered, start=1):
         # Deliberately no executor here: exactly one timed subprocess is alive.
         rows.extend(run_case(binary, case, small_merge, fj_run_thresh, build_id))
-        progress(done, len(ordered), "time (interleaved serial)")
+        progress(done, len(ordered), "time (grouped serial)")
     return rows
 
 

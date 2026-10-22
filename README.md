@@ -30,6 +30,27 @@ near its boundary by design: the worst measured duplicate-input regression
 against Powersort is +0.165/elem at 96 distinct values, bounded by the
 local gap between the two branches.
 
+## Runtime-guided general sorting
+
+`hybrid_general_portfolio` (v16) routes using runs, duplicates, descent density,
+and multi-distance inversions. Evaluation leads with uninstrumented latency
+and measured auxiliary memory; comparisons audit routing and work. In the
+2026-10-22 balanced-round replication on 162 fresh input/seed cases (27
+distributions, two sizes, three seeds), it has +1.22% median regret against
+the fastest of six standalone baselines, with 145/162 cases within 5%.
+The worst case is +38.58%, so this is a competitive experimental portfolio,
+not a universal speed guarantee. See `notes/timing_method_20261022.md` and
+`results/general_v16_balanced_heldout_20261022.md`.
+
+`hybrid_general_prefix` is a separate experimental candidate. Three revisions
+tested whether bounded prefix detection and reused first-run certificates
+reduce overhead on ordered inputs. None established a consistent development
+gain; the registered version is v3 and is not promoted over v16. The rejected
+versions and their source checkpoints are documented in
+`notes/general_prefix_20261022.md`. Reserved heldout seeds 201--203 were not
+used. The paper generator builds the [updated report](output/pdf/sorting_as_agent_research_v13.pdf)
+from the committed CSVs.
+
 ## Build and run
 
 ```sh
@@ -172,7 +193,7 @@ formats.
 
 ## Algorithms
 
-The registry includes 53 comparison algorithms plus one radix reference:
+The registry includes 54 comparison algorithms plus one radix reference:
 standard-library baselines (`std_sort`, `std_stable`),
 heapsort, three quicksort variants (`quick_mo3`, `dual_pivot`, `bl_quick`), a
 top-down mergesort, Timsort, Powersort, binary-insertion and Ford--Johnson
